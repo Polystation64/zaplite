@@ -584,7 +584,13 @@
     // terceira). Isso é uma decisão sobre a máquina dele, não sobre este app —
     // então é dele. Desligado, o comportamento é exatamente o de sempre: só o
     // Ctrl+Shift+W esconde/mostra.
-    globalHotkey: false
+    globalHotkey: false,
+    // 02 — `scheduleSend` nasce DESLIGADO, e aqui o argumento é o mais forte de
+    // toda esta lista: é o único módulo do app que ENVIA MENSAGEM sozinho. Todo
+    // o resto para na caixa de texto. Ligar um módulo que clica em "enviar" no
+    // lugar do usuário é decisão dele, tomada no Painel depois de ler o que o
+    // módulo faz — nunca um padrão de fábrica.
+    scheduleSend: false
   };
   async function applyAll() {
     try {
@@ -793,7 +799,7 @@
     let aguardandoMotivo = "";
     let agendado = 0;
     let flushando = false;
-    const fila = [];
+    const fila2 = [];
     const backoffDe = (n) => Math.min(BACKOFF_BASE_MS * Math.pow(2, Math.max(0, n - 1)), BACKOFF_CAP_MS);
     async function restauraContador() {
       try {
@@ -818,8 +824,8 @@
     }
     function entrega(t) {
       return invoke("conn_transition", t).catch((e) => {
-        while (fila.length >= FILA_MAX) fila.shift();
-        fila.push(t);
+        while (fila2.length >= FILA_MAX) fila2.shift();
+        fila2.push(t);
         throw e;
       });
     }
@@ -836,7 +842,7 @@
       return false;
     }
     let ultimaEmissao = { chave: "", ts: 0 };
-    function sendTransition(prev, st, rs, quando) {
+    function sendTransition(prev, st, rs, quando2) {
       const chave = prev + ">" + st + "|" + rs;
       const agora = Date.now();
       if (chave === ultimaEmissao.chave && agora - ultimaEmissao.ts < REEMISSAO_MIN_MS) {
@@ -848,7 +854,7 @@
         state: st,
         reason: rs,
         attempts,
-        ts: new Date(quando || agora).toISOString()
+        ts: new Date(quando2 || agora).toISOString()
       };
       marcaEnviada(st + "|" + rs);
       return entrega(t).catch(() => {
@@ -859,14 +865,14 @@
       flushando = true;
       try {
         let guarda = FILA_MAX + 1;
-        while (fila.length && guarda-- > 0) {
-          const t = fila[0];
+        while (fila2.length && guarda-- > 0) {
+          const t = fila2[0];
           try {
             await invoke("conn_transition", t);
           } catch (_) {
             return;
           }
-          if (fila[0] === t) fila.shift();
+          if (fila2[0] === t) fila2.shift();
         }
       } finally {
         flushando = false;
@@ -1488,7 +1494,7 @@
           restaurado,
           semPonte,
           pedindo,
-          fila: fila.length,
+          fila: fila2.length,
           // sinais crus, p/ auditoria — leitura, nunca ação
           login: loginScreen(),
           banner: offlineBanner(),
@@ -4402,8 +4408,8 @@
     }
   }
   async function disparar(r, atrasado) {
-    const quando = hhmm(r.quando);
-    const corpo = r.texto + (r.conversa ? "\n\nConversa: " + r.conversa : "") + (atrasado ? "\n\n(era para " + quando + " \u2014 o app estava fechado na hora)" : "");
+    const quando2 = hhmm(r.quando);
+    const corpo = r.texto + (r.conversa ? "\n\nConversa: " + r.conversa : "") + (atrasado ? "\n\n(era para " + quando2 + " \u2014 o app estava fechado na hora)" : "");
     try {
       await invoke("show_toast", {
         toast: {
@@ -4415,14 +4421,14 @@
           // vazio de propósito: ver o cabeçalho deste arquivo
           chat_id: "",
           muted: false,
-          time: quando,
+          time: quando2,
           clock: "",
           is_group: false,
           mention_mark: false
         }
       });
     } catch (e) {
-      showPanel("Lembrete \u2014 " + quando, corpo + "\n\n(o aviso flutuante falhou: " + e.message + ")");
+      showPanel("Lembrete \u2014 " + quando2, corpo + "\n\n(o aviso flutuante falhou: " + e.message + ")");
     }
   }
   async function conferir() {
@@ -4490,8 +4496,8 @@
           const oque = texto.value.trim();
           if (!oque) return showPanel("Falta o texto", "Escreva o que voc\xEA quer lembrar.");
           const agora = Date.now();
-          const quando = proximoDisparo(hora.value, agora) || daquiAMinutos(hora.value, agora);
-          if (!quando) {
+          const quando2 = proximoDisparo(hora.value, agora) || daquiAMinutos(hora.value, agora);
+          if (!quando2) {
             return showPanel(
               "N\xE3o entendi o hor\xE1rio",
               "Escreva \u201C15h\u201D, \u201C15:30\u201D ou \u201Cem 20\u201D (minutos). Foi digitado: \u201C" + hora.value + "\u201D."
@@ -4499,14 +4505,14 @@
           }
           pendentes.push({
             id: String(agora) + Math.random().toString(36).slice(2, 7),
-            quando,
+            quando: quando2,
             texto: oque,
             conversa: cx.checked ? conversa : ""
           });
           await gravar();
           showPanel(
             "Lembrete criado",
-            "\u201C" + oque + "\u201D \xE0s " + hhmm(quando) + ".\n\nVale s\xF3 com o ZapLite aberto. Fechou o app antes da hora, o aviso aparece atrasado na pr\xF3xima abertura."
+            "\u201C" + oque + "\u201D \xE0s " + hhmm(quando2) + ".\n\nVale s\xF3 com o ZapLite aberto. Fechou o app antes da hora, o aviso aparece atrasado na pr\xF3xima abertura."
           );
         }
       ]
@@ -5449,11 +5455,11 @@
         if (r.casa) achouMsg.push(m);
       }
       const achouConv = convs.filter((c) => casaConversa(c, f));
-      const resumo = document.createElement("div");
-      resumo.className = "zl-lim";
-      resumo.style.whiteSpace = "pre-wrap";
-      resumo.textContent = "Varridas " + msgs.length + " mensagens e " + convs.length + " conversas (s\xF3 o renderizado).\nAchadas: " + achouMsg.length + " mensagens e " + achouConv.length + " conversas." + (semData ? "\n" + semData + " mensagens ficaram FORA do filtro de data por n\xE3o terem carimbo leg\xEDvel na bolha (o WhatsApp s\xF3 p\xF5e data em algumas). Sem filtro de data elas voltam a ser vistas." : "") + (iDe.value || iAte.value ? "\nO filtro de data N\xC3O vale para a lista de conversas: o r\xF3tulo da linha (\u201C16:35\u201D, \u201COntem\u201D) \xE9 da \xFAltima mensagem e quase nunca \xE9 uma data." : "");
-      resultados.appendChild(resumo);
+      const resumo2 = document.createElement("div");
+      resumo2.className = "zl-lim";
+      resumo2.style.whiteSpace = "pre-wrap";
+      resumo2.textContent = "Varridas " + msgs.length + " mensagens e " + convs.length + " conversas (s\xF3 o renderizado).\nAchadas: " + achouMsg.length + " mensagens e " + achouConv.length + " conversas." + (semData ? "\n" + semData + " mensagens ficaram FORA do filtro de data por n\xE3o terem carimbo leg\xEDvel na bolha (o WhatsApp s\xF3 p\xF5e data em algumas). Sem filtro de data elas voltam a ser vistas." : "") + (iDe.value || iAte.value ? "\nO filtro de data N\xC3O vale para a lista de conversas: o r\xF3tulo da linha (\u201C16:35\u201D, \u201COntem\u201D) \xE9 da \xFAltima mensagem e quase nunca \xE9 uma data." : "");
+      resultados.appendChild(resumo2);
       if (!achouMsg.length && !achouConv.length) {
         const v = document.createElement("div");
         v.className = "zl-lim";
@@ -5587,6 +5593,462 @@
     });
   }
 
+  // src-tauri/injection/src/modulos/agendar.js
+  var ID_ACT12 = "zl-agendar";
+  var PASSO_MS2 = 15e3;
+  var ATRASO_MAX_MS = 2 * PASSO_MS2;
+  var fila = [];
+  var timer4 = null;
+  var disparando = false;
+  function quandoAgendar(texto, agora) {
+    const t = String(texto || "").trim().toLowerCase().replace(/\s+/g, " ");
+    if (!t) return 0;
+    let m = t.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+(\d{1,2})(?::(\d{2}))?h?$/);
+    if (m) {
+      const [dia, mes, ano, h, min] = [+m[1], +m[2], m[3], +m[4], m[5] === void 0 ? 0 : +m[5]];
+      if (!(dia >= 1 && dia <= 31 && mes >= 1 && mes <= 12 && h <= 23 && min <= 59)) return 0;
+      const base = new Date(agora);
+      let a = ano === void 0 ? base.getFullYear() : +ano;
+      if (a < 100) a += 2e3;
+      const alvo = new Date(a, mes - 1, dia, h, min, 0, 0);
+      if (alvo.getTime() <= agora && ano === void 0) alvo.setFullYear(a + 1);
+      if (!(alvo.getTime() > agora)) return 0;
+      if (alvo.getDate() !== dia || alvo.getMonth() !== mes - 1) return 0;
+      return alvo.getTime();
+    }
+    m = t.match(/^amanh[ãa] (\d{1,2})(?::(\d{2}))?h?$/);
+    if (m) {
+      const h = +m[1];
+      const min = m[2] === void 0 ? 0 : +m[2];
+      if (!(h <= 23 && min <= 59)) return 0;
+      const alvo = new Date(agora);
+      alvo.setDate(alvo.getDate() + 1);
+      alvo.setHours(h, min, 0, 0);
+      return alvo.getTime();
+    }
+    m = t.match(/^(\d{1,2})(?::(\d{2}))?h?$/);
+    if (m) {
+      const h = +m[1];
+      const min = m[2] === void 0 ? 0 : +m[2];
+      if (!(h <= 23 && min <= 59)) return 0;
+      const alvo = new Date(agora);
+      alvo.setHours(h, min, 0, 0);
+      if (alvo.getTime() <= agora) alvo.setDate(alvo.getDate() + 1);
+      return alvo.getTime();
+    }
+    m = t.match(/^em (\d{1,4})\s*(m|min|minutos?)?$/);
+    if (m) {
+      const n = +m[1];
+      if (!(n >= 1 && n <= 10080)) return 0;
+      return agora + n * 6e4;
+    }
+    return 0;
+  }
+  var quando = (ms) => {
+    const d = new Date(ms);
+    const p = (n) => String(n).padStart(2, "0");
+    const hoje = (/* @__PURE__ */ new Date()).toDateString() === d.toDateString();
+    return (hoje ? "hoje " : p(d.getDate()) + "/" + p(d.getMonth() + 1) + " ") + p(d.getHours()) + ":" + p(d.getMinutes());
+  };
+  var resumo = (txt, n) => txt.length > n ? txt.slice(0, n - 1) + "\u2026" : txt;
+  function carregar3() {
+    const bruto = settings && settings.scheduled || [];
+    fila = (Array.isArray(bruto) ? bruto : []).map((r) => ({
+      id: String(r && r.id || ""),
+      jid: String(r && r.jid || ""),
+      nome: String(r && r.nome || ""),
+      texto: String(r && r.texto || ""),
+      quando: Number(r && r.quando || 0),
+      // "pendente" | "atrasado" | "falhou"
+      estado: String(r && r.estado || "pendente"),
+      motivo: String(r && r.motivo || "")
+    })).filter((r) => r.id && r.jid && r.texto && r.quando > 0);
+  }
+  async function gravar3() {
+    try {
+      await invoke("save_module_data", { chave: "scheduled", valor: fila });
+    } catch (e) {
+      showPanel(
+        "O agendamento N\xC3O foi guardado",
+        "Ele vale enquanto o app estiver aberto, mas some se voc\xEA reiniciar.\n\n" + e.message
+      );
+    }
+  }
+  function anotar(evento, jid) {
+    invoke("log_agendamento", { evento, chatId: jid || "" }).catch(() => {
+    });
+  }
+  async function avisar(titulo, corpo, id) {
+    try {
+      await invoke("show_toast", {
+        toast: {
+          // `chat_id` vazio, pelo mesmo motivo do lembrete: nenhuma regra de
+          // conversa pode silenciar um aviso do próprio app, e clicar nele não
+          // abre conversa (abrir mandaria recibo de leitura).
+          id: "agendado-" + id,
+          sender: titulo,
+          author: "",
+          body: corpo,
+          avatar: "",
+          chat_id: "",
+          muted: false,
+          time: quando(Date.now()),
+          clock: "",
+          is_group: false,
+          mention_mark: false
+        }
+      });
+    } catch (_) {
+      showPanel(titulo, corpo);
+    }
+  }
+  function caixaDeMensagem() {
+    try {
+      const main = document.querySelector("#main");
+      if (!main) return null;
+      const cx = main.querySelector('footer [contenteditable="true"]');
+      return cx && cx.closest("footer") ? cx : null;
+    } catch (_) {
+      return null;
+    }
+  }
+  function escreverNaCaixa2(cx, texto) {
+    cx.focus();
+    const sel = window.getSelection();
+    if (!sel) return false;
+    const r = document.createRange();
+    r.selectNodeContents(cx);
+    sel.removeAllRanges();
+    sel.addRange(r);
+    return document.execCommand("insertText", false, texto);
+  }
+  function botaoEnviar() {
+    try {
+      const main = document.querySelector("#main");
+      const rodape = main && main.querySelector("footer");
+      if (!rodape) return null;
+      const porIcone = rodape.querySelector('[data-icon="send"], [data-icon="wds-ic-send-filled"]');
+      if (porIcone) return porIcone.closest("button") || porIcone;
+      const cands = rodape.querySelectorAll('button[aria-label], [role="button"][aria-label]');
+      for (const b of cands) {
+        const rot = (b.getAttribute("aria-label") || "").toLowerCase();
+        if (rot === "enviar" || rot === "send") return b;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+  async function preparar(item) {
+    const linha = linhasDaLista().find((r) => chatIdDaLinha(r) === item.jid);
+    if (!linha) {
+      return {
+        ok: false,
+        etapa: "abrir a conversa",
+        erro: "a linha de \u201C" + (item.nome || item.jid) + "\u201D n\xE3o est\xE1 no peda\xE7o da lista que o WhatsApp desenhou agora. Role a lista at\xE9 ela aparecer e use \u201CEnviar agora\u201D."
+      };
+    }
+    cliqueReal(linha);
+    let aberta = "";
+    for (let i = 0; i < 30; i++) {
+      await wait(100);
+      aberta = chatIdAberto();
+      if (aberta === item.jid) break;
+    }
+    if (aberta !== item.jid) {
+      return {
+        ok: false,
+        etapa: "conferir a conversa aberta",
+        erro: "cliquei na linha e a conversa aberta \xE9 outra (" + (aberta || "nenhuma") + "), n\xE3o " + (item.nome || item.jid) + ". Nada foi escrito nem enviado."
+      };
+    }
+    let cx = null;
+    for (let i = 0; i < 20; i++) {
+      cx = caixaDeMensagem();
+      if (cx) break;
+      await wait(100);
+    }
+    if (!cx) {
+      return {
+        ok: false,
+        etapa: "achar a caixa de mensagem",
+        erro: "a conversa certa abriu, mas o campo de escrever n\xE3o foi encontrado no rodap\xE9 (o WhatsApp pode ter mudado a estrutura, ou a conversa \xE9 s\xF3 leitura). Nada foi enviado."
+      };
+    }
+    if (!escreverNaCaixa2(cx, item.texto)) {
+      return {
+        ok: false,
+        etapa: "escrever na caixa",
+        erro: "n\xE3o consegui escrever o texto na caixa de mensagem. Nada foi enviado."
+      };
+    }
+    await wait(250);
+    return { ok: true, etapa: "texto na caixa", caixa: cx };
+  }
+  async function disparar2(item, ensaio) {
+    if (disparando) return { ok: false, etapa: "fila", erro: "outro agendamento est\xE1 sendo disparado agora." };
+    disparando = true;
+    try {
+      anotar(ensaio ? "ensaio" : "disparando", item.jid);
+      const r = await preparar(item);
+      if (!r.ok) return r;
+      if (ensaio) {
+        return {
+          ok: true,
+          etapa: "ensaio",
+          erro: "",
+          ensaio: true
+        };
+      }
+      const btn = botaoEnviar();
+      if (!btn) {
+        return {
+          ok: false,
+          etapa: "achar o bot\xE3o de enviar",
+          erro: "o texto est\xE1 na caixa da conversa certa, mas o bot\xE3o de enviar n\xE3o foi encontrado. NADA foi enviado \u2014 o texto ficou l\xE1 para voc\xEA mandar (ou apagar)."
+        };
+      }
+      cliqueReal(btn);
+      return { ok: true, etapa: "enviado", erro: "" };
+    } finally {
+      disparando = false;
+    }
+  }
+  async function conferir3() {
+    const agora = Date.now();
+    const vencidos = fila.filter((r) => r.estado === "pendente" && r.quando <= agora);
+    if (!vencidos.length) return;
+    let mudou = false;
+    for (const item of vencidos) {
+      if (agora - item.quando > ATRASO_MAX_MS) {
+        item.estado = "atrasado";
+        item.motivo = "a hora (" + quando(item.quando) + ") passou com o ZapLite fechado ou dormindo. Nada foi enviado: quem decide \xE9 voc\xEA.";
+        mudou = true;
+        anotar("atrasado", item.jid);
+        await avisar(
+          "Agendamento ficou para tr\xE1s",
+          "\u201C" + resumo(item.texto, 90) + "\u201D\nPara: " + (item.nome || item.jid) + "\n" + item.motivo,
+          item.id
+        );
+        continue;
+      }
+      const r = await disparar2(item, false);
+      if (r.ok) {
+        fila = fila.filter((o) => o.id !== item.id);
+        mudou = true;
+        anotar("enviado", item.jid);
+        await avisar(
+          "Mensagem agendada ENVIADA",
+          "Para: " + (item.nome || item.jid) + "\n\u201C" + resumo(item.texto, 140) + "\u201D\nEnviada agora pelo ZapLite, conforme voc\xEA agendou para " + quando(item.quando) + ".",
+          item.id
+        );
+      } else {
+        item.estado = "falhou";
+        item.motivo = "parou em \u201C" + r.etapa + "\u201D: " + r.erro;
+        mudou = true;
+        anotar("falhou", item.jid);
+        await avisar(
+          "Agendamento N\xC3O foi enviado",
+          "Para: " + (item.nome || item.jid) + "\n" + item.motivo,
+          item.id
+        );
+      }
+    }
+    if (mudou) await gravar3();
+  }
+  function linhaDaFila(item, redesenhar) {
+    const li = document.createElement("div");
+    li.className = "zl-item";
+    li.style.alignItems = "flex-start";
+    li.style.flexWrap = "wrap";
+    const s = document.createElement("span");
+    const marca = item.estado === "pendente" ? "" : item.estado === "atrasado" ? "\u26A0 ATRASADO \u2014 " : "\u2716 FALHOU \u2014 ";
+    s.textContent = marca + quando(item.quando) + " \u2192 " + (item.nome || item.jid) + ": \u201C" + resumo(item.texto, 60) + "\u201D";
+    li.appendChild(s);
+    const botao = (rotulo, fn) => {
+      const b = document.createElement("button");
+      b.className = "zl-x2";
+      b.textContent = rotulo;
+      b.onclick = fn;
+      return b;
+    };
+    li.appendChild(
+      botao("ensaiar (n\xE3o envia)", async () => {
+        const r = await disparar2(item, true);
+        showPanel(
+          r.ok ? "Ensaio: chegou at\xE9 a caixa de mensagem" : "Ensaio: parou em \u201C" + r.etapa + "\u201D",
+          r.ok ? "A conversa de " + (item.nome || item.jid) + " est\xE1 aberta e o texto est\xE1 na caixa de mensagem \u2014 e PAROU A\xCD. Nada foi enviado.\n\nConfira se \xE9 a conversa e o texto certos. Para descartar, apague o texto da caixa (ele n\xE3o some sozinho: mexer na caixa por conta pr\xF3pria depois do ensaio seria escrever na tela sem voc\xEA pedir).\n\nNa hora marcada, o passo seguinte \xE9 clicar em enviar." : r.erro
+        );
+      })
+    );
+    if (item.estado !== "pendente") {
+      li.appendChild(
+        botao("enviar agora", async () => {
+          const r = await disparar2(item, false);
+          if (r.ok) {
+            fila = fila.filter((o) => o.id !== item.id);
+            anotar("enviado", item.jid);
+            await gravar3();
+            showPanel("Enviada", "A mensagem foi enviada para " + (item.nome || item.jid) + ".");
+          } else {
+            item.motivo = "parou em \u201C" + r.etapa + "\u201D: " + r.erro;
+            await gravar3();
+            showPanel("N\xE3o deu para enviar", item.motivo);
+          }
+          redesenhar();
+        })
+      );
+      li.appendChild(
+        botao("reagendar", async () => {
+          const novo = prompt(
+            "Nova hora para \u201C" + resumo(item.texto, 40) + "\u201D\n\nFormatos: 15h \xB7 15:30 \xB7 amanh\xE3 9h \xB7 25/12 20:00 \xB7 em 30 (minutos)",
+            ""
+          );
+          if (novo === null) return;
+          const t = quandoAgendar(novo, Date.now());
+          if (!t) return showPanel("N\xE3o entendi o hor\xE1rio", "Foi digitado: \u201C" + novo + "\u201D.");
+          item.quando = t;
+          item.estado = "pendente";
+          item.motivo = "";
+          await gravar3();
+          redesenhar();
+        })
+      );
+    }
+    li.appendChild(
+      botao("cancelar", async () => {
+        fila = fila.filter((o) => o.id !== item.id);
+        anotar("cancelado", item.jid);
+        await gravar3();
+        redesenhar();
+      })
+    );
+    if (item.motivo) {
+      const m = document.createElement("div");
+      m.className = "zl-lim";
+      m.style.flexBasis = "100%";
+      m.textContent = item.motivo;
+      li.appendChild(m);
+    }
+    return li;
+  }
+  function abrirFila() {
+    const form = document.createElement("div");
+    form.className = "zl-form";
+    const jid = chatIdAberto();
+    const nome = nomeDaConversaAberta();
+    const texto = document.createElement("textarea");
+    texto.placeholder = jid ? "A mensagem que vai ser enviada para \u201C" + nome + "\u201D" : "Abra a conversa de destino primeiro";
+    texto.disabled = !jid;
+    const hora = document.createElement("input");
+    hora.type = "text";
+    hora.placeholder = "Quando: 15h \xB7 15:30 \xB7 amanh\xE3 9h \xB7 25/12 20:00 \xB7 em 30 (minutos)";
+    hora.disabled = !jid;
+    const destino = document.createElement("div");
+    destino.className = "zl-lim";
+    destino.textContent = jid ? "Destinat\xE1rio: " + nome + " (" + jid + ") \u2014 a conversa ABERTA agora. N\xE3o existe campo \u201Cpara quem\u201D: o destino \xE9 sempre a conversa que est\xE1 na sua frente, e o que fica guardado \xE9 o identificador dela, n\xE3o o nome." : "Nenhuma conversa aberta. Abra a conversa para quem a mensagem deve ir e volte aqui.";
+    const lim = document.createElement("div");
+    lim.className = "zl-lim";
+    lim.textContent = "COMO ISTO FUNCIONA, sem letra mi\xFAda: o ZapLite vai ABRIR a conversa, escrever o texto e CLICAR EM ENVIAR sozinho, na hora marcada. S\xF3 acontece com o app ABERTO e conectado \u2014 o rel\xF3gio \xE9 desta p\xE1gina, n\xE3o do Windows. Se a hora passar com o app fechado, a mensagem N\xC3O \xE9 enviada atrasada por conta pr\xF3pria: ela aparece aqui marcada como atrasada e quem decide \xE9 voc\xEA. Se a conversa n\xE3o puder ser aberta ou o campo n\xE3o for encontrado, o envio \xE9 abortado e voc\xEA \xE9 avisado \u2014 nunca vai para outra conversa. Todo disparo deixa aviso na tela e linha no connection.log.";
+    form.appendChild(destino);
+    form.appendChild(texto);
+    form.appendChild(hora);
+    form.appendChild(lim);
+    if (fila.length) {
+      const t = document.createElement("div");
+      t.className = "zl-lim";
+      t.textContent = "NA FILA (" + fila.length + "):";
+      form.appendChild(t);
+      const lista = document.createElement("div");
+      lista.className = "zl-lista";
+      fila.slice().sort((a, b) => a.quando - b.quando).forEach((r) => lista.appendChild(linhaDaFila(r, abrirFila)));
+      form.appendChild(lista);
+    }
+    const acoes = [];
+    if (jid) {
+      acoes.push([
+        "Agendar\u2026",
+        () => {
+          const oque = texto.value.trim();
+          if (!oque) return showPanel("Falta o texto", "Escreva a mensagem que deve ser enviada.");
+          const agora = Date.now();
+          const t = quandoAgendar(hora.value, agora);
+          if (!t) {
+            return showPanel(
+              "N\xE3o entendi o hor\xE1rio",
+              "Use \u201C15h\u201D, \u201C15:30\u201D, \u201Camanh\xE3 9h\u201D, \u201C25/12 20:00\u201D ou \u201Cem 30\u201D (minutos).\nFoi digitado: \u201C" + hora.value + "\u201D."
+            );
+          }
+          const conf = document.createElement("div");
+          conf.className = "zl-form";
+          const p1 = document.createElement("div");
+          p1.textContent = "PARA: " + nome + "  (" + jid + ")";
+          const p2 = document.createElement("div");
+          p2.textContent = "QUANDO: " + quando(t);
+          const p3 = document.createElement("div");
+          p3.style.whiteSpace = "pre-wrap";
+          p3.style.borderLeft = "3px solid var(--zl-accent,#22d3aa)";
+          p3.style.padding = "4px 0 4px 8px";
+          p3.textContent = oque;
+          const p4 = document.createElement("div");
+          p4.className = "zl-lim";
+          p4.textContent = "Ao confirmar, o ZapLite vai enviar este texto para esta conversa, sozinho, nesta hora \u2014 desde que esteja aberto e conectado. Voc\xEA pode cancelar ou editar at\xE9 l\xE1, pela fila.";
+          conf.appendChild(p1);
+          conf.appendChild(p2);
+          conf.appendChild(p3);
+          conf.appendChild(p4);
+          showPanel("Confirmar agendamento", conf, [
+            [
+              "Confirmar e agendar",
+              async () => {
+                fila.push({
+                  id: String(agora) + Math.random().toString(36).slice(2, 7),
+                  jid,
+                  nome,
+                  texto: oque,
+                  quando: t,
+                  estado: "pendente",
+                  motivo: ""
+                });
+                await gravar3();
+                anotar("agendado", jid);
+                abrirFila();
+              }
+            ],
+            ["Voltar", () => abrirFila()]
+          ]);
+        }
+      ]);
+    }
+    const p = showPanel(
+      "Agendar mensagem \u2014 " + fila.length + " na fila",
+      form,
+      acoes
+    );
+    if (jid) setTimeout(() => texto.focus(), 0);
+    return p;
+  }
+  function registrarAgendar() {
+    reg({
+      id: "scheduleSend",
+      label: "Agendar mensagem",
+      apply() {
+        addAct(ensureDock(), ID_ACT12, "\u{1F552}", "Agendar mensagem", "", abrirFila);
+        carregar3();
+        if (timer4) return;
+        timer4 = setInterval(conferir3, PASSO_MS2);
+        setTimeout(conferir3, 6e3);
+      },
+      revert() {
+        dropAct(ID_ACT12);
+        if (timer4) {
+          clearInterval(timer4);
+          timer4 = null;
+        }
+      }
+    });
+  }
+
   // src-tauri/injection/src/main.js
   connCore();
   registrarEnvioNaoSalvo();
@@ -5619,6 +6081,7 @@
   registrarAtalhoGlobal();
   registrarFigurinhaCriar();
   registrarFigurinhaImagem();
+  registrarAgendar();
   window.__ZAPLITE_RELOAD__ = applyAll;
   boot();
 })();

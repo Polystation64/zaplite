@@ -48,6 +48,10 @@ fn main() {
             // uma nota por vez, ou um arquivo dentro de uma pasta que o
             // USUÁRIO apontou no diálogo nativo desta sessão.
             "save_module_data",
+            // 02 — a página registra o disparo do agendamento no
+            // connection.log. Evento de uma allowlist fechada, sem o texto da
+            // mensagem (ver `EVENTOS_DE_AGENDAMENTO`).
+            "log_agendamento",
             "note_get",
             "note_ids",
             "note_set",
@@ -57,6 +61,16 @@ fn main() {
             // capabilities/default.json. Ele apenas LÊ o resultado do registro
             // dos atalhos globais; a página do WhatsApp Web não o tem.
             "atalhos_estado",
+            // O settings.json ilegível deixou de ser um `{}` calado: o Painel
+            // desenha a faixa vermelha a partir deste comando. Só ele o cita.
+            "settings_saude",
+            // 28 — multi-conta. Os quatro são SÓ do Painel: a lista de contas
+            // do usuário não interessa à página do WhatsApp Web, e
+            // `conta_trocar` reinicia o processo inteiro.
+            "contas_estado",
+            "conta_criar",
+            "conta_remover",
+            "conta_trocar",
             "open_settings",
             "open_log_dir",
             // B2: só o Painel o cita (capabilities/default.json). A página do

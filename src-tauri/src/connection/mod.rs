@@ -69,6 +69,8 @@ pub(crate) use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
 pub(crate) use std::sync::{Mutex, MutexGuard, OnceLock};
 pub(crate) use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 pub(crate) use tauri::{AppHandle, Emitter, Manager};
+// 28 — a pasta do `connection.log` é a da conta ativa (ver `log_path`).
+pub(crate) use crate::contas;
 
 mod tipos;
 mod estado;

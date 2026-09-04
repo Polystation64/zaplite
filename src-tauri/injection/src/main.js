@@ -54,6 +54,7 @@ import { registrarBuscaAvancada } from "./modulos/busca-avancada.js";
 import { registrarAtalhoGlobal } from "./modulos/atalho-global.js";
 import { registrarFigurinhaCriar } from "./modulos/figurinha-criar.js";
 import { registrarFigurinhaImagem } from "./modulos/figurinha-imagem.js";
+import { registrarAgendar } from "./modulos/agendar.js";
 
 /* 1. Camada de conexão: precisa do gancho no WebSocket ANTES de a página
       abrir o primeiro socket. É o primeiro efeito do bundle. */
@@ -129,6 +130,22 @@ registrarBuscaAvancada();
 registrarAtalhoGlobal();
 registrarFigurinhaCriar();
 registrarFigurinhaImagem();
+
+/* 2e. ONDA 4 — `scheduleSend`, e ele é diferente de TODOS os anteriores.
+      Até aqui, a frase que fechava cada bloco acima era "nenhum destes envia
+      mensagem". Este envia: é o primeiro módulo do ZapLite que clica no botão
+      de enviar sem o dedo do usuário no instante do envio, e o usuário pediu
+      isso sabendo.
+
+      Vem por último pelo mesmo motivo dos outros — a ordem do que já existia
+      fica intacta — e, ligado, o efeito é uma entrada no dock mais um
+      temporizador de 15 s que só olha a fila. Com a fila vazia ele não toca
+      em nada: não abre conversa, não escreve na caixa, não envia.
+
+      Nasce DESLIGADO (ver `MODULOS_PADRAO`), e essa é a única resposta
+      aceitável para um módulo cujo pior erro é mandar a mensagem errada para
+      a pessoa errada. Quem liga é o usuário, no Painel, lendo o que ele faz. */
+registrarAgendar();
 
 /* 4. O Rust chama isto ao salvar settings. */
 window.__ZAPLITE_RELOAD__ = applyAll;

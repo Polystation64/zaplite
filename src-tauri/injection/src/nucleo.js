@@ -150,6 +150,12 @@ const MODULOS_PADRAO = {
   // então é dele. Desligado, o comportamento é exatamente o de sempre: só o
   // Ctrl+Shift+W esconde/mostra.
   globalHotkey: false,
+  // 02 — `scheduleSend` nasce DESLIGADO, e aqui o argumento é o mais forte de
+  // toda esta lista: é o único módulo do app que ENVIA MENSAGEM sozinho. Todo
+  // o resto para na caixa de texto. Ligar um módulo que clica em "enviar" no
+  // lugar do usuário é decisão dele, tomada no Painel depois de ler o que o
+  // módulo faz — nunca um padrão de fábrica.
+  scheduleSend: false,
 };
 
 export async function applyAll() {

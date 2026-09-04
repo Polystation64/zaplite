@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-conta-trocar"
+description = "Enables the conta_trocar command without any pre-configured scope."
+commands.allow = ["conta_trocar"]
+
+[[permission]]
+identifier = "deny-conta-trocar"
+description = "Denies the conta_trocar command without any pre-configured scope."
+commands.deny = ["conta_trocar"]

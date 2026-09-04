@@ -1362,6 +1362,55 @@ fn clicar_no_toast(app: &AppHandle, id: &str, botao: Option<usize>) {
     let _ = w.eval(&js);
 }
 
+/// Aviso do PRÓPRIO APP pela janela de toast que já existe — não é mensagem
+/// de conversa nenhuma. Vai com `chat_id` vazio pela mesma razão do lembrete
+/// (`modulos/lembretes.js`): nenhuma regra de conversa pode silenciá-lo, e
+/// clicar nele não abre conversa (abrir mandaria recibo de leitura).
+///
+/// Usado por quem precisa que o usuário VEJA um defeito do app — hoje, o
+/// settings.json ilegível. Uma linha no `connection.log` não é aviso:
+/// ninguém abre `connection.log` por conta própria.
+///
+/// `id` é ASCII, e isso não é estilo: o `id` vira o RÓTULO da janela
+/// (`toast-<id>`), e o Tauri só aceita `[a-zA-Z0-9-/:_]` num rótulo. A
+/// primeira versão derivava o id do título com `is_alphanumeric()`, deixava
+/// passar o `ç` de "Configuração", o `build()` da janela falhava e o aviso
+/// simplesmente não aparecia — o modo de falha calado que esta função existe
+/// para matar, reproduzido dentro dela. Medido em 04/09: nenhuma janela de
+/// toast foi criada. Por isso o `debug_assert` e o filtro ASCII abaixo.
+pub fn avisar_do_app(app: &AppHandle, id: &str, titulo: &str, corpo: &str) {
+    debug_assert!(
+        id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
+        "id de aviso do app vira rótulo de janela: só ASCII"
+    );
+    let req = ToastRequest {
+        id: id_de_aviso(id),
+        sender: titulo.to_string(),
+        body: corpo.to_string(),
+        ..Default::default()
+    };
+    let h = app.clone();
+    tauri::async_runtime::spawn(async move {
+        // O erro NÃO é descartado: um aviso do app que não conseguiu
+        // aparecer é a mesma doença que ele veio tratar. Sem esta linha, a
+        // falha do `build()` da janela some sem rastro.
+        if let Err(e) = show_toast(h.clone(), req).await {
+            crate::connection::note_diag(&h, &format!("aviso do app NÃO apareceu na tela: {e}"));
+        }
+    });
+}
+
+/// PURA e testada. O id do aviso vira o rótulo da janela (`toast-<id>`), e o
+/// Tauri só aceita `[a-zA-Z0-9-/:_]` ali.
+pub fn id_de_aviso(id: &str) -> String {
+    let limpo: String = id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(32)
+        .collect();
+    format!("app-{}", if limpo.is_empty() { "aviso".into() } else { limpo })
+}
+
 #[cfg(debug_assertions)]
 pub fn prova_janelas(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
@@ -1504,6 +1553,36 @@ pub fn prova_janelas(app: AppHandle) {
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    /// REGRESSÃO MEDIDA (04/09/2026): o aviso de "settings.json inválido" não
+    /// apareceu na tela. Causa: o id vinha do título ("Configuração do
+    /// ZapLite…"), o `ç` entrava no rótulo da janela (`toast-<id>`) e o
+    /// `WebviewWindowBuilder::build()` recusava — em silêncio, porque o erro
+    /// era descartado. Um aviso que não aparece é o mesmo defeito que ele
+    /// veio denunciar.
+    #[test]
+    fn id_de_aviso_do_app_sempre_da_um_rotulo_de_janela_valido() {
+        let valido = |s: &str| {
+            format!("toast-{s}")
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '/' || c == ':' || c == '_')
+        };
+        for entrada in [
+            "settings-invalido",
+            "Configuração do ZapLite não pôde ser lida",
+            "",
+            "  ",
+            "日本語",
+            "a/b\\c*?",
+            &"x".repeat(200),
+        ] {
+            let id = id_de_aviso(entrada);
+            assert!(valido(&id), "“{entrada}” gerou um rótulo inválido: {id}");
+            assert!(id.len() <= 36 + 4, "rótulo cresceu sem teto: {id}");
+        }
+        assert_eq!(id_de_aviso("settings-invalido"), "app-settings-invalido");
+        assert_eq!(id_de_aviso("日本語"), "app-aviso", "id sem nada de ASCII ainda vira janela");
+    }
 
     fn pedido() -> ToastRequest {
         ToastRequest {

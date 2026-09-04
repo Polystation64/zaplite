@@ -18,6 +18,7 @@
     "notification:default",
     "allow-load-settings-public",
     "allow-save-module-data",
+    "allow-log-agendamento",
     "allow-note-get",
     "allow-note-ids",
     "allow-note-set",

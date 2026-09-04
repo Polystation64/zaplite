@@ -776,6 +776,140 @@ teste("os limites honestos da onda 3 sobrevivem ao empacotamento", () => {
   );
 });
 
+/* --- 02: AGENDAR MENSAGEM -------------------------------------------------
+   `quandoAgendar` é a única função pura do módulo que envia sozinho, e é ela
+   que decide QUANDO. Um erro aqui não é "o painel ficou torto": é a mensagem
+   saindo na hora errada. Daí o teste amarrar os quatro formatos e, sobretudo,
+   o que ela tem que RECUSAR. */
+const quandoAgendar = new Function(extrair("quandoAgendar") + "; return quandoAgendar;")();
+
+teste("quandoAgendar entende os quatro formatos e sempre olha para a frente", () => {
+  // 10/03/2026, 14:00 — segunda-feira qualquer, hora cheia para a conta fechar.
+  const agora = new Date(2026, 2, 10, 14, 0, 0, 0).getTime();
+  const d = (ms) => new Date(ms);
+
+  // "15h" hoje ainda não passou.
+  assert.strictEqual(d(quandoAgendar("15h", agora)).getHours(), 15);
+  assert.strictEqual(d(quandoAgendar("15h", agora)).getDate(), 10);
+
+  // "9h" já passou hoje ⇒ amanhã. É o que "às 9h" quer dizer às 14h.
+  assert.strictEqual(d(quandoAgendar("9h", agora)).getDate(), 11);
+
+  assert.strictEqual(d(quandoAgendar("15:30", agora)).getMinutes(), 30);
+  assert.strictEqual(d(quandoAgendar("amanhã 9h", agora)).getDate(), 11);
+  assert.strictEqual(d(quandoAgendar("amanha 9h", agora)).getDate(), 11, "sem til tambem vale");
+
+  const natal = d(quandoAgendar("25/12 20:00", agora));
+  assert.strictEqual(natal.getDate(), 25);
+  assert.strictEqual(natal.getMonth(), 11);
+  assert.strictEqual(natal.getFullYear(), 2026);
+
+  // Data que já passou e SEM ano escrito: o usuário quis o ano que vem.
+  assert.strictEqual(d(quandoAgendar("01/01 10:00", agora)).getFullYear(), 2027);
+
+  assert.strictEqual(quandoAgendar("em 30", agora), agora + 30 * 60000);
+  assert.strictEqual(quandoAgendar("em 30 min", agora), agora + 30 * 60000);
+});
+
+teste("quandoAgendar recusa o que nao e hora, em vez de chutar uma", () => {
+  const agora = new Date(2026, 2, 10, 14, 0, 0, 0).getTime();
+  // Zero = "nao entendi", e o modulo mostra o erro. O que NAO pode acontecer
+  // e um destes virar um instante qualquer e a mensagem sair sozinha nele.
+  for (const lixo of [
+    "", "   ", "amanha", "qualquer coisa", "25h", "15:99", "32/01 10:00",
+    "31/02 10:00", "em 0", "em 99999", "-5", "0/0", "15:", "1e3",
+  ]) {
+    assert.strictEqual(quandoAgendar(lixo, agora), 0, "deveria recusar: “" + lixo + "”");
+  }
+  // E nada do que ela aceita pode estar no passado.
+  for (const bom of ["15h", "9h", "amanhã 9h", "25/12 20:00", "em 1"]) {
+    assert.ok(quandoAgendar(bom, agora) > agora, "“" + bom + "” caiu no passado");
+  }
+});
+
+teste("o modulo que ENVIA sozinho nao perde nenhuma das suas guardas", () => {
+  // Cada `includes` aqui e uma guarda do 02 que so existe enquanto o texto
+  // existir. Sao as que separam "agendar" de "um robo mandando mensagem".
+  assert.ok(
+    SRC.includes("conferir a conversa aberta"),
+    "sumiu a conferencia de jid que impede mandar para a conversa errada"
+  );
+  assert.ok(
+    SRC.includes("Confirmar agendamento"),
+    "sumiu a tela de confirmacao com destinatario e texto"
+  );
+  assert.ok(
+    SRC.includes("ensaiar (n\\xE3o envia)"),
+    "sumiu o ensaio — o unico jeito de o usuario conferir o disparo sem enviar"
+  );
+  assert.ok(
+    SRC.includes("passou com o ZapLite fechado"),
+    "sumiu a recusa de enviar atrasado por conta propria"
+  );
+  assert.ok(
+    SRC.includes("log_agendamento"),
+    "sumiu a linha de log do disparo: envio sem rastro e envio silencioso"
+  );
+  /* A trava mais importante do modulo, e a razao de este teste existir: o
+     clique em ENVIAR acontece em UM lugar so, e esse lugar tem que ser
+     inalcancavel quando `ensaio` e verdadeiro. Se algum dia alguem inverter
+     estas duas linhas, o "ensaiar (nao envia)" passa a enviar — e o usuario
+     descobre isso pela mensagem que saiu.
+
+     O nome sai do empacotador como `disparar2` (ja existe um `disparar` nos
+     lembretes), entao a busca e pela ASSINATURA, nao pelo nome. */
+  const ini = SRC.search(/async function disparar\d*\(item, ensaio\)/);
+  assert.ok(ini >= 0, "sumiu a funcao de disparo do agendamento");
+  let nivel = 0;
+  let fim = SRC.indexOf("{", ini);
+  for (let j = fim; j < SRC.length; j++) {
+    if (SRC[j] === "{") nivel++;
+    else if (SRC[j] === "}" && --nivel === 0) {
+      fim = j;
+      break;
+    }
+  }
+  const corpo = SRC.slice(ini, fim + 1);
+  const saidaDoEnsaio = corpo.indexOf("if (ensaio)");
+  const procuraOBotao = corpo.indexOf("botaoEnviar()");
+  assert.ok(saidaDoEnsaio >= 0, "sumiu a saida do ensaio de dentro do disparo");
+  assert.ok(procuraOBotao >= 0, "sumiu a procura do botao de enviar");
+  assert.ok(
+    saidaDoEnsaio < procuraOBotao,
+    "o ensaio tem que sair ANTES de qualquer caminho que procure o botao de enviar"
+  );
+  assert.strictEqual(
+    (corpo.match(/cliqueReal\(btn\)/g) || []).length,
+    1,
+    "o clique em enviar tem que existir em UM lugar so"
+  );
+});
+
+/* --- O PAINEL TEM QUE COMPILAR ------------------------------------------
+   ACHADO DESTA RODADA, e o pior tipo: o `<script>` de `src/index.html`
+   estava com ERRO DE SINTAXE desde a onda 3 — duas strings de
+   `hkConferir` abertas numa linha e fechadas na seguinte, o que em
+   JavaScript não é quebra de linha, é fim de arquivo inesperado. Um único
+   erro de sintaxe derruba o BLOCO INTEIRO: nenhuma linha do Painel roda,
+   nenhum interruptor funciona, o status fica em "carregando…" para sempre.
+   E nada avisava — nem o build, nem os testes, nem a tela.
+
+   `new vm.Script` é exatamente o que o navegador faz ao carregar o bloco:
+   se ele compila aqui, o Painel sobe; se não compila, nenhum teste abaixo
+   importa, porque o usuário não vai conseguir nem ligar um módulo. */
+teste("o script do Painel e o do toast compilam", () => {
+  const vm = require("vm");
+  for (const arquivo of ["../../src/index.html", "../../src/toast.html"]) {
+    const caminho = path.join(__dirname, arquivo);
+    const html = fs.readFileSync(caminho, "utf8");
+    const ini = html.indexOf("<script>");
+    const fim = html.lastIndexOf("</script>");
+    assert.ok(ini >= 0 && fim > ini, arquivo + " não tem bloco <script>");
+    // Não executa nada: só compila, que é o passo em que o defeito morava.
+    new vm.Script(html.slice(ini + 8, fim), { filename: arquivo });
+  }
+});
+
 (async () => {
   let falhas = 0;
   for (const [nome, fn] of casos) {

@@ -1,5 +1,6 @@
 mod ai;
 mod connection;
+mod contas;
 mod diagnostico;
 mod notify;
 mod protocol;
@@ -60,6 +61,17 @@ pub(crate) fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
         let p = PathBuf::from(perfil);
         let _ = fs::create_dir_all(&p);
         b = b.data_directory(p);
+    }
+
+    // 28 — MULTI-CONTA. Uma sessão do WhatsApp É o perfil do WebView2: sem
+    // `--user-data-dir` próprio, a segunda conta escreve por cima da primeira
+    // e as duas se perdem. Devolve `None` para a conta principal, e isso é
+    // deliberado: passar `data_directory` mudaria a pasta onde a sessão de
+    // hoje vive, e mudar a pasta da sessão é deslogar o usuário. Quem nunca
+    // criar uma segunda conta não tem um byte movido de lugar.
+    if let Some(perfil) = contas::perfil_webview(app) {
+        let _ = fs::create_dir_all(&perfil);
+        b = b.data_directory(perfil);
     }
     if injetar {
         b = b.initialization_script(BUNDLE_JS);
@@ -211,17 +223,202 @@ pub(crate) fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn settings_path(app: &AppHandle) -> PathBuf {
-    let dir = app.path().app_config_dir().expect("config dir");
+    let dir = contas::pasta_da_conta(app);
     let _ = fs::create_dir_all(&dir);
     dir.join("settings.json")
 }
 
+/* ==========================================================================
+   BOM — O MODO DE FALHA CALADO QUE CUSTAVA A CONFIGURAÇÃO INTEIRA
+   ==========================================================================
+   `read_settings` era `from_str(&s).ok().unwrap_or_else(|| json!({}))`. Duas
+   consequências, as duas ruins e nenhuma visível:
+
+     · um settings.json gravado com BOM UTF-8 (`EF BB BF`) — que é o que o
+       Bloco de Notas e o `Out-File`/`Set-Content` do PowerShell fazem por
+       padrão — é REJEITADO pelo serde_json inteiro, porque o BOM não é
+       espaço em branco em JSON. O usuário abre o arquivo, corrige uma linha,
+       salva, e o app volta a TODOS os padrões;
+     · qualquer outro erro — uma vírgula sobrando, o disco devolvendo lixo —
+       dava exatamente o mesmo `{}` silencioso. E o `{}` não fica só na
+       memória: o primeiro `save_module_data` ou `save_settings` GRAVA esse
+       `{}` por cima do arquivo. A configuração não é só ignorada, é perdida.
+
+   O que passa a valer:
+     · BOM é ACEITO (é só um carimbo de codificação, não conteúdo);
+     · arquivo ausente continua sendo `{}` em silêncio — é a primeira
+       execução, e não há nada a avisar;
+     · arquivo PRESENTE e inválido nunca mais vira `{}` calado: o original é
+       renomeado para `settings-invalido-<carimbo>.json` (nada é apagado),
+       sai uma linha no `connection.log`, e o motivo fica guardado para o
+       Painel e para o aviso na tela.
+   ========================================================================== */
+
+/// O que a leitura crua do settings.json encontrou.
+#[derive(Debug, PartialEq)]
+pub(crate) enum LeituraSettings {
+    /// Não existe arquivo. Primeira execução: `{}` é a resposta certa.
+    Ausente,
+    /// JSON válido e objeto.
+    Ok(Value),
+    /// Existe, mas não dá para usar. A `String` é o motivo, em português, e
+    /// é CURTA de propósito: ela vai inteira para o `connection.log`, e
+    /// `sanitize_reason` corta cada `reason` em 160 caracteres. Um motivo
+    /// longo viraria uma linha de log truncada no meio — medido: a primeira
+    /// versão deste texto saía cortada em “está em “C:\\Users\\”. O texto
+    /// comprido, com o caminho do arquivo arquivado, é montado no chamador e
+    /// vai para a tela, onde não há limite de 160.
+    Invalido(String),
+}
+
+/// PURA e testada: decide o que um conteúdo de settings.json significa.
+/// Recebe `None` quando o arquivo não pôde ser lido do disco.
+pub(crate) fn interpretar_settings(bruto: Option<&str>) -> LeituraSettings {
+    let Some(bruto) = bruto else {
+        return LeituraSettings::Ausente;
+    };
+    // O BOM UTF-8 vira `U+FEFF` na `String` — um caractere, não três bytes.
+    let texto = bruto.strip_prefix('\u{feff}').unwrap_or(bruto);
+    if texto.trim().is_empty() {
+        // Arquivo vazio (ou só o BOM) é o mesmo caso do arquivo ausente:
+        // acontece quando o app é morto no meio da primeira gravação, e não
+        // há configuração nenhuma a perder.
+        return LeituraSettings::Ausente;
+    }
+    match serde_json::from_str::<Value>(texto) {
+        Ok(Value::Object(m)) => LeituraSettings::Ok(Value::Object(m)),
+        Ok(outro) => LeituraSettings::Invalido(format!(
+            "é JSON válido mas não é um objeto (veio um {})",
+            match outro {
+                Value::Null => "null",
+                Value::Bool(_) => "true/false",
+                Value::Number(_) => "número",
+                Value::String(_) => "texto",
+                Value::Array(_) => "array",
+                Value::Object(_) => "objeto",
+            }
+        )),
+        Err(e) => LeituraSettings::Invalido(
+            // A mensagem do serde já traz linha e coluna; repeti-las só
+            // gastava os 160 caracteres da linha de log.
+            format!("não é JSON válido: {e}")
+                .chars()
+                .take(90)
+                .collect::<String>(),
+        ),
+    }
+}
+
+/// Motivo da última leitura inválida, para o Painel e para o aviso na tela.
+/// `None` enquanto nada deu errado. Guardado porque o arquivo quebrado é
+/// renomeado na hora: sem isto, o motivo morreria com a chamada.
+static SETTINGS_QUEBRADO: Mutex<Option<String>> = Mutex::new(None);
+
+/// Ligada quando o settings.json é inválido E não deu para pôr o original de
+/// lado. Enquanto valer, `gravar_settings` recusa — melhor um erro na cara do
+/// usuário do que a configuração dele sobrescrita por `{}`.
+static GRAVACAO_TRAVADA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Põe o arquivo quebrado de lado, sem apagar nada, e devolve para onde foi.
+fn arquivar_settings_invalido(p: &Path) -> Option<PathBuf> {
+    let carimbo = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let destino = p.with_file_name(format!("settings-invalido-{carimbo}.json"));
+    match fs::rename(p, &destino) {
+        Ok(()) => Some(destino),
+        // Renomear falhou (arquivo travado por outro programa): então NÃO
+        // deixamos o app gravar por cima — é melhor um erro visível do que
+        // uma configuração perdida em silêncio.
+        Err(_) => None,
+    }
+}
+
 pub(crate) fn read_settings(app: &AppHandle) -> Value {
     let p = settings_path(app);
-    fs::read_to_string(p)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_else(|| json!({}))
+    let bruto = fs::read_to_string(&p).ok();
+    match interpretar_settings(bruto.as_deref()) {
+        LeituraSettings::Ok(v) => v,
+        LeituraSettings::Ausente => json!({}),
+        LeituraSettings::Invalido(motivo) => {
+            // O relato acontece UMA vez por processo. `read_settings` é
+            // chamado dezenas de vezes (todo toast passa por aqui); sem esta
+            // trava o mesmo defeito viraria dezenas de linhas de log e uma
+            // fila de avisos na tela.
+            use std::sync::atomic::{AtomicBool, Ordering};
+            static JA_RELATOU: AtomicBool = AtomicBool::new(false);
+            if JA_RELATOU.swap(true, Ordering::SeqCst) {
+                return json!({});
+            }
+            let onde = arquivar_settings_invalido(&p);
+            // Duas versões do mesmo fato, de propósito: a CURTA cabe nos 160
+            // caracteres da linha de log; a LONGA vai para a tela, onde o
+            // usuário precisa do caminho inteiro para achar o arquivo.
+            let curta = match &onde {
+                Some(d) => format!(
+                    "settings.json {motivo}; arquivado como {}",
+                    d.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+                ),
+                None => format!("settings.json {motivo}; NÃO deu para arquivar — gravação travada"),
+            };
+            let recado = match &onde {
+                Some(d) => format!(
+                    "O settings.json {motivo}. O arquivo NÃO foi apagado: está em “{}”. \
+                     O ZapLite subiu com os padrões de fábrica — a sua configuração está lá dentro.",
+                    d.display()
+                ),
+                None => format!(
+                    "O settings.json {motivo}. Não consegui nem pôr o arquivo de lado (ele está \
+                     em uso?), então o ZapLite está rodando com os padrões e NÃO vai gravar por \
+                     cima. Feche o programa que está com o arquivo aberto e reinicie o ZapLite."
+                ),
+            };
+            if onde.is_none() {
+                // Trava de gravação: enquanto o arquivo quebrado continuar
+                // lá, ninguém escreve por cima dele. Perder a configuração em
+                // silêncio é justamente o defeito que este bloco existe para
+                // matar — um erro visível no Painel custa muito menos.
+                GRAVACAO_TRAVADA.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            // Uma linha no connection.log: é o arquivo que responde
+            // "por que o app voltou aos padrões?" três dias depois.
+            connection::note_diag(app, &curta);
+            if let Ok(mut g) = SETTINGS_QUEBRADO.lock() {
+                *g = Some(recado.clone());
+            }
+            // E na tela, pela mesma janela de aviso dos toasts.
+            avisar_settings_quebrado(app, &recado);
+            json!({})
+        }
+    }
+}
+
+/// O que o Painel mostra na faixa de aviso. `None` = nada quebrado.
+#[tauri::command]
+fn settings_saude() -> Option<String> {
+    SETTINGS_QUEBRADO.lock().ok().and_then(|g| g.clone())
+}
+
+/// Aviso VISÍVEL, uma vez por processo: o log sozinho não é aviso — ninguém
+/// abre `connection.log` por conta própria.
+fn avisar_settings_quebrado(app: &AppHandle, recado: &str) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static JA_AVISOU: AtomicBool = AtomicBool::new(false);
+    if JA_AVISOU.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let h = app.clone();
+    let corpo = recado.to_string();
+    // Fora da pilha atual: `read_settings` é chamado de dentro do `setup`, e
+    // a janela de toast precisa do app já de pé.
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
+        let _ = h.emit("zl-settings-quebrado", corpo.clone());
+        notify::avisar_do_app(
+            &h,
+            "settings-invalido",
+            "Configuração do ZapLite não pôde ser lida",
+            &corpo,
+        );
+    });
 }
 
 /// Chaves que a janela do WhatsApp Web (origem remota, não confiável) pode ver.
@@ -268,6 +465,13 @@ const CHAVES_PUBLICAS: &[&str] = &[
     // abertas na tela. `contactNotes` continua fora, porque lá o conteúdo é
     // texto que só existe no ZapLite.
     "pinExtra",
+    // 02 — `scheduled` é a fila de mensagens agendadas. Entra aqui pelo
+    // mesmo teste das outras: quem precisa dela é a PÁGINA (é ela que tem o
+    // relógio, abre a conversa e escreve na caixa), e o conteúdo é texto que
+    // o próprio usuário digitou para mandar naquela conversa, mais o jid que
+    // ele mesmo tinha aberto na tela. Nada aqui é agenda: é a fila de saída
+    // dele, e sem ela do lado da página não existe agendamento nenhum.
+    "scheduled",
 ];
 
 /// `notify` NÃO está na lista acima de propósito: as regras carregam os NOMES
@@ -343,6 +547,13 @@ pub(crate) fn write_settings(app: &AppHandle, settings: Value) -> Result<(), Str
 /// valor na mão, e reaplicar os 24 módulos a cada tecla salva seria trabalho
 /// pago para desfazer o que o usuário está fazendo na tela.
 fn gravar_settings(app: &AppHandle, settings: Value) -> Result<(), String> {
+    if GRAVACAO_TRAVADA.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(SETTINGS_QUEBRADO
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
+            .unwrap_or_else(|| "o settings.json atual está inválido e não pôde ser arquivado".into()));
+    }
     let p = settings_path(app);
     fs::write(p, serde_json::to_string_pretty(&settings).unwrap()).map_err(|e| e.to_string())
 }
@@ -358,7 +569,48 @@ fn gravar_settings(app: &AppHandle, settings: Value) -> Result<(), String> {
 
 /// Os únicos ramos que a origem remota escreve. Qualquer outro nome é recusado
 /// com mensagem, não em silêncio.
-const RAMOS_GRAVAVEIS_PELA_PAGINA: &[&str] = &["quickReplies", "reminders", "pinExtra"];
+const RAMOS_GRAVAVEIS_PELA_PAGINA: &[&str] = &["quickReplies", "reminders", "pinExtra", "scheduled"];
+
+/* --------------------------------------------------------------------------
+   02 — AGENDAR MENSAGEM: a linha de log do disparo.
+
+   É a primeira vez que este app manda alguma coisa sem o dedo do usuário no
+   instante do envio. "Nada de envio silencioso" só é verdade se sobrar
+   RASTRO — o toast o usuário pode não ver (máquina bloqueada, tela apagada);
+   a linha do `connection.log` fica.
+
+   O que NÃO entra na linha, de propósito: o TEXTO da mensagem. O
+   `connection.log` é o arquivo que o usuário cola num relatório de
+   diagnóstico (`diagnostico_texto` o embute redigido), e conteúdo de
+   mensagem não pode viajar junto. Vai o evento e a conversa — o mesmo nível
+   de detalhe que o resto do log já carrega.
+   -------------------------------------------------------------------------- */
+
+/// Os únicos eventos que a página pode registrar. Allowlist porque o valor
+/// vem da origem remota: sem ela, isto é um canal de escrita livre no log.
+const EVENTOS_DE_AGENDAMENTO: &[&str] = &[
+    "agendado",
+    "cancelado",
+    "disparando",
+    "enviado",
+    "falhou",
+    "ensaio",
+    "atrasado",
+];
+
+#[tauri::command]
+fn log_agendamento(app: AppHandle, evento: String, chat_id: String) -> Result<(), String> {
+    if !EVENTOS_DE_AGENDAMENTO.contains(&evento.as_str()) {
+        return Err(format!("evento de agendamento desconhecido: “{evento}”"));
+    }
+    let alvo = if chat_id_plausivel(&chat_id) {
+        chat_id
+    } else {
+        "(conversa não identificada)".to_string()
+    };
+    connection::note_diag(&app, &format!("agendamento [{evento}] conversa {alvo}"));
+    Ok(())
+}
 
 /// Tamanho máximo de um ramo vindo da página, em bytes de JSON. Não é
 /// desconfiança do usuário: é o teto que impede que um defeito de laço num
@@ -658,7 +910,10 @@ pub(crate) fn achar_whisper(cli_cfg: &str, modelo: &str, home: Option<&str>) -> 
 /// Existe para o item SOBRE: pedir o log a quem relata um bug fica trivial.
 #[tauri::command]
 fn open_log_dir(app: AppHandle) -> Result<(), String> {
-    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    // 28 — a pasta da CONTA ATIVA: é lá que estão o `connection.log` e o
+    // `settings.json` desta sessão. Abrir a raiz mostraria o log da conta
+    // principal para quem está numa conta de trabalho.
+    let dir = contas::pasta_da_conta(&app);
     let _ = std::fs::create_dir_all(&dir);
     std::process::Command::new("explorer.exe")
         .arg(dir.as_os_str())
@@ -1207,6 +1462,7 @@ fn aba_valida(secao: Option<&str>) -> Option<&'static str> {
         Some("notif") | Some("notificacoes") => Some("notif"),
         Some("custom") | Some("personalizacao") => Some("custom"),
         Some("ia") | Some("transcricao") | Some("whisper") => Some("ia"),
+        Some("contas") | Some("conta") => Some("contas"),
         Some("about") | Some("sobre") => Some("about"),
         Some("atualiza") | Some("atualizacao") | Some("atualização") => Some("atualiza"),
         _ => None,
@@ -1275,6 +1531,8 @@ mod testes_arquivo {
         assert_eq!(aba_valida(Some("ia")), Some("ia"));
         assert_eq!(aba_valida(Some("Transcricao")), Some("ia"));
         assert_eq!(aba_valida(Some("mods")), Some("mods"));
+        // 28 — a aba nova entra na MESMA allowlist. Ela vira `eval` no Painel.
+        assert_eq!(aba_valida(Some("contas")), Some("contas"));
         assert_eq!(aba_valida(None), None);
         assert_eq!(aba_valida(Some("');alert(1);('")), None);
     }
@@ -1365,6 +1623,56 @@ mod testes {
         assert_eq!(filtrar_publicas(&json!({})), json!({}));
     }
 
+    /* --- O MODO DE FALHA CALADO ------------------------------------------
+       O defeito: `settings.json` com BOM UTF-8 (`EF BB BF`) — o que o Bloco
+       de Notas e o `Set-Content` do PowerShell gravam por padrão — era
+       recusado pelo serde_json INTEIRO, e o app voltava a todos os padrões
+       sem uma palavra. Estes testes amarram as duas metades do conserto:
+       BOM passa, e o que é realmente inválido nunca mais vira `{}` mudo. */
+
+    #[test]
+    fn bom_utf8_no_settings_deixa_de_apagar_a_configuracao() {
+        let bom = "\u{feff}{\"modules\":{\"theme\":false},\"anthropicKey\":\"segredo\"}";
+        match interpretar_settings(Some(bom)) {
+            LeituraSettings::Ok(v) => {
+                assert_eq!(v["modules"]["theme"], json!(false), "a configuração sobrevive ao BOM");
+                assert_eq!(v["anthropicKey"], json!("segredo"));
+            }
+            outro => panic!("BOM ainda derruba o settings.json: {outro:?}"),
+        }
+        // Sem BOM continua igual.
+        assert!(matches!(
+            interpretar_settings(Some("{\"modules\":{}}")),
+            LeituraSettings::Ok(_)
+        ));
+    }
+
+    #[test]
+    fn arquivo_ausente_ou_vazio_e_silencioso_mas_invalido_e_barulhento() {
+        // Primeira execução: nada a avisar.
+        assert_eq!(interpretar_settings(None), LeituraSettings::Ausente);
+        assert_eq!(interpretar_settings(Some("")), LeituraSettings::Ausente);
+        assert_eq!(interpretar_settings(Some("\u{feff}")), LeituraSettings::Ausente);
+        assert_eq!(interpretar_settings(Some("  \n ")), LeituraSettings::Ausente);
+
+        // Conteúdo de verdade e quebrado: NUNCA `{}` calado.
+        for bruto in [
+            "{\"modules\":{},}",            // vírgula sobrando
+            "{isto não é json}",
+            "\u{feff}{\"a\":1,",            // truncado, com BOM
+            "[1,2,3]",                      // JSON válido, mas não é objeto
+            "\"texto\"",
+            "null",
+        ] {
+            match interpretar_settings(Some(bruto)) {
+                LeituraSettings::Invalido(motivo) => {
+                    assert!(!motivo.is_empty(), "todo inválido tem motivo em português");
+                }
+                outro => panic!("“{bruto}” deveria ser Invalido, veio {outro:?}"),
+            }
+        }
+    }
+
     /// ONDA 2 — o caderno de notas é agenda: fica do lado Rust, entregue uma
     /// nota por pedido. Já `quickReplies` e `reminders` PRECISAM atravessar,
     /// senão o atalho não expande e o lembrete não dispara.
@@ -1416,6 +1724,47 @@ mod testes {
         assert_eq!(publico["pinExtra"][0]["jid"], "5521999999999@c.us");
         assert!(publico.get("contactNotes").is_none(), "o caderno de notas vazou junto");
         assert!(RAMOS_GRAVAVEIS_PELA_PAGINA.contains(&"pinExtra"));
+    }
+
+    /// 02 — a fila de agendamentos precisa atravessar (é a página que tem o
+    /// relógio e o botão de enviar) e ser gravável por ela (a fila muda a
+    /// cada disparo, cancelamento e reagendamento). O caderno de notas
+    /// continua do lado de fora, pelo mesmo motivo de sempre.
+    #[test]
+    fn fila_de_agendamentos_atravessa_e_e_gravavel_pela_pagina() {
+        let completo = json!({
+            "scheduled": [{
+                "id": "abc", "jid": "5521999999999@c.us", "nome": "Silvia",
+                "texto": "bom dia", "quando": 1_800_000_000_000i64, "estado": "pendente"
+            }],
+            "anthropicKey": "segredo",
+            "contactNotes": { "5521999999999@c.us": "nao mencionar o irmao" },
+        });
+        let publico = filtrar_publicas(&completo);
+        assert_eq!(publico["scheduled"][0]["jid"], "5521999999999@c.us");
+        assert!(publico.get("anthropicKey").is_none(), "a chave paga vazou para a página");
+        assert!(publico.get("contactNotes").is_none(), "o caderno de notas vazou junto");
+        assert!(RAMOS_GRAVAVEIS_PELA_PAGINA.contains(&"scheduled"));
+    }
+
+    /// A linha de log do disparo é o que faz "nada de envio silencioso" ser
+    /// verdade quando o usuário não viu o toast. Duas propriedades: o evento
+    /// vem de uma allowlist fechada (a origem é remota), e o TEXTO da
+    /// mensagem não tem por onde entrar — o comando nem recebe um.
+    #[test]
+    fn o_log_do_agendamento_e_allowlist_e_nao_carrega_texto_de_mensagem() {
+        assert!(EVENTOS_DE_AGENDAMENTO.contains(&"enviado"));
+        assert!(EVENTOS_DE_AGENDAMENTO.contains(&"falhou"));
+        assert!(EVENTOS_DE_AGENDAMENTO.contains(&"atrasado"));
+        for inventado in ["", "qualquer coisa", "ENVIADO", "enviado\n{\"src\":\"app\"}"] {
+            assert!(
+                !EVENTOS_DE_AGENDAMENTO.contains(&inventado),
+                "“{inventado}” não pode virar linha de log"
+            );
+        }
+        // O jid é conferido antes de entrar na linha.
+        assert!(chat_id_plausivel("5521999999999@c.us"));
+        assert!(!chat_id_plausivel("bom dia, tudo bem?"));
     }
 
     /// 27 — a tabela de atalhos. Cada ação tem id e rótulo, e só o
@@ -1580,6 +1929,13 @@ fn alternar_janela(app: &AppHandle) {
 }
 
 pub fn run() {
+    // 28 — PRIMEIRA linha do processo, antes de qualquer plugin. Tudo que
+    // resolve caminho (settings.json, connection.log, perfil do WebView2)
+    // pergunta a `contas::ativa()`, e ela precisa estar fixada antes do
+    // primeiro `read_settings`. Uma conta por processo, e ela nunca muda —
+    // é o que torna o `OnceLock` do `LOG_PATH` correto por construção.
+    contas::fixar_ativa(&std::env::args().collect::<Vec<_>>());
+
     let construido = tauri::Builder::default()
         // K2(a): PRIMEIRO plugin da lista, de propósito. Os plugins são
         // inicializados na ordem de registro; este detecta a instância viva,
@@ -1648,6 +2004,7 @@ pub fn run() {
             // Onda 2 — gravação ESTREITA a partir da página. Nenhum destes
             // reescreve o settings.json inteiro, e nenhum devolve segredo.
             save_module_data,
+            log_agendamento,
             note_get,
             note_ids,
             note_set,
@@ -1656,6 +2013,16 @@ pub fn run() {
             // 27 — só LÊ o que o registro dos atalhos devolveu. Só o Painel o
             // cita; a página do WhatsApp não precisa saber de atalho nenhum.
             atalhos_estado,
+            // O modo de falha calado do settings.json: o Painel desenha a
+            // faixa vermelha a partir disto. Só o Painel o cita.
+            settings_saude,
+            // 28 — multi-conta. Só o PAINEL cita os quatro: a janela do
+            // WhatsApp Web não tem nada que fazer com a lista de contas do
+            // usuário, e muito menos com o comando que reinicia o app.
+            contas::contas_estado,
+            contas::conta_criar,
+            contas::conta_remover,
+            contas::conta_trocar,
             open_settings,
             open_log_dir,
             // B2: o relatório de diagnóstico em texto. Só o Painel o cita

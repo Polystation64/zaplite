@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-log-agendamento"
+description = "Enables the log_agendamento command without any pre-configured scope."
+commands.allow = ["log_agendamento"]
+
+[[permission]]
+identifier = "deny-log-agendamento"
+description = "Denies the log_agendamento command without any pre-configured scope."
+commands.deny = ["log_agendamento"]

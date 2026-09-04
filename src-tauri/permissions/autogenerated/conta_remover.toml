@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-conta-remover"
+description = "Enables the conta_remover command without any pre-configured scope."
+commands.allow = ["conta_remover"]
+
+[[permission]]
+identifier = "deny-conta-remover"
+description = "Denies the conta_remover command without any pre-configured scope."
+commands.deny = ["conta_remover"]

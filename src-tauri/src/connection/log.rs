@@ -96,7 +96,12 @@ pub(crate) fn log_path(app: &AppHandle) -> Option<&'static PathBuf> {
     if let Some(p) = LOG_PATH.get() {
         return Some(p);
     }
-    let dir = app.path().app_config_dir().ok()?;
+    // 28 — a pasta é a da CONTA ATIVA, fixada no topo do `run()` e imutável
+    // enquanto o processo viver. É por isso que este `OnceLock` continua
+    // correto: uma conta por processo, um `connection.log` por conta. Sem
+    // isto, o log de duas contas se misturaria no mesmo arquivo e o
+    // diagnóstico passaria a mentir sobre qual sessão caiu.
+    let dir = contas::pasta_da_conta(app);
     let _ = fs::create_dir_all(&dir);
     let _ = LOG_PATH.set(dir.join("connection.log"));
     LOG_PATH.get()

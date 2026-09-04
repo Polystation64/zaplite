@@ -29,7 +29,7 @@
 //! e o valor da chave não é lido em lugar nenhum deste arquivo.
 
 use serde_json::Value;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 /// Quantas linhas do fim do log entram no relatório.
 const LINHAS_DO_LOG: usize = 200;
@@ -419,7 +419,9 @@ pub(crate) async fn diagnostico_texto(app: AppHandle) -> Result<String, String> 
     let ia = crate::ai::ai_status(app.clone());
     let w = crate::whisper::whisper_status(app.clone());
 
-    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    // 28 — o log da CONTA ATIVA. Um relatório que misturasse o log de duas
+    // contas seria pior que nenhum relatório.
+    let dir = crate::contas::pasta_da_conta(&app);
     let bruto = std::fs::read_to_string(dir.join("connection.log")).unwrap_or_default();
     let log = redigir_log(&bruto, LINHAS_DO_LOG);
 

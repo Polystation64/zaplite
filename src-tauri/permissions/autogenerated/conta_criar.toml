@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-conta-criar"
+description = "Enables the conta_criar command without any pre-configured scope."
+commands.allow = ["conta_criar"]
+
+[[permission]]
+identifier = "deny-conta-criar"
+description = "Denies the conta_criar command without any pre-configured scope."
+commands.deny = ["conta_criar"]

@@ -155,7 +155,7 @@
       <div class="logo">Z</div>
       <div>
         <h1>ZapLite</h1>
-        <p>cliente leve • 32 módulos • sessão persistente</p>
+        <p>cliente leve • 34 no catálogo, 30 com código • multi-conta • sessão persistente</p>
       </div>
     </div>
     <div class="save">
@@ -164,11 +164,21 @@
     </div>
   </header>
 
+  <!-- O settings.json não pôde ser lido. Faixa no TOPO, visível em toda aba:
+       o app está rodando com os padrões de fábrica e o usuário precisa saber
+       disso antes de mexer em qualquer coisa aqui — senão ele "conserta" o
+       painel inteiro por cima de uma configuração que ainda existe em disco. -->
+  <div id="cfgAviso" hidden
+       style="margin-bottom:18px;padding:14px 16px;border-radius:10px;
+              border:1px solid #f43f5e;background:rgba(244,63,94,.10);
+              font-size:13.5px;line-height:1.6;color:var(--txt);white-space:pre-wrap"></div>
+
   <nav class="tabs">
     <div class="tab active" data-tab="mods">MÓDULOS</div>
     <div class="tab" data-tab="notif">NOTIFICAÇÕES</div>
     <div class="tab" data-tab="custom">PERSONALIZAÇÃO</div>
     <div class="tab" data-tab="ia">IA & TRANSCRIÇÃO</div>
+    <div class="tab" data-tab="contas">CONTAS</div>
     <div class="tab" data-tab="atualiza">ATUALIZAÇÃO</div>
     <div class="tab" data-tab="about">SOBRE</div>
   </nav>
@@ -211,6 +221,18 @@
         <span class="plan-hint" style="margin:0">Depois de “Salvar e aplicar”: mostra o que o Windows aceitou.</span>
       </div>
       <div id="hkEstado" class="plan-hint" style="margin-top:12px;white-space:pre-wrap"></div>
+    </div>
+
+    <div class="plan-sep" id="modForaSec" hidden>
+      <h2 id="modForaTitulo">RESOLVIDOS FORA DA GRADE</h2>
+      <p class="plan-hint">
+        Estes dois têm resposta, e a resposta não é um interruptor. Um foi
+        <b style="color:var(--txt)">construído</b> e mora noutro lugar do painel; o outro foi
+        <b style="color:var(--txt)">recusado</b>, com o motivo escrito no cartão. Ficam aqui, e não
+        na lista dos que não existem, porque “não existe ainda” e “decidimos não fazer” são
+        coisas diferentes — e a segunda o usuário merece ler.
+      </p>
+      <div class="grid" id="modForaGrid"></div>
     </div>
 
     <div class="plan-sep" id="modPlanSec" hidden>
@@ -605,6 +627,45 @@
     </div>
   </section>
 
+  <section class="page" id="page-contas">
+    <div class="field" style="max-width:760px">
+      <h2 style="margin:0 0 10px;font-size:13px;letter-spacing:.08em;color:var(--muted)">CONTAS DO ZAPLITE</h2>
+      <p class="hint" style="margin-top:0">
+        Cada conta tem a <b style="color:var(--txt)">própria sessão do WhatsApp</b> — perfil próprio
+        do WebView2, que é o que impede uma sessão de escrever por cima da outra — e a própria pasta
+        de dados: <code>settings.json</code> e <code>connection.log</code> separados. Como cada conta
+        é uma <b style="color:var(--txt)">pasta</b>, e não uma chave dentro do mesmo arquivo, notas,
+        regras de notificação, fixados extras, respostas rápidas, lembretes e agendamentos
+        <b style="color:var(--txt)">não têm por onde se misturar</b>: não existe caminho de código
+        que possa “esquecer” de qual conta é o dado, porque nenhum caminho de código conhece a
+        conta — todos conhecem uma pasta.
+      </p>
+
+      <div id="ctLista" class="rows" style="margin-top:16px"></div>
+
+      <div style="display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap">
+        <input id="ctNome" type="text" placeholder="Nome da nova conta (ex.: Trabalho)"
+               style="flex:1 1 240px;min-width:200px" />
+        <button class="primary" id="ctCriar"
+          style="background:transparent;color:var(--accent);border:1px solid var(--accent)">+ Criar conta</button>
+      </div>
+      <p class="hint">
+        Criar não abre janela nenhuma: só prepara a pasta. O QR daquela conta aparece quando você
+        <b style="color:var(--txt)">trocar</b> para ela.
+        <b style="color:var(--txt)">Remover tira do registro e NÃO apaga a pasta</b> — lá dentro está
+        a sessão logada daquela conta, e apagar sessão de WhatsApp por clique de menu é destruição
+        irreversível. O caminho é mostrado para você apagar à mão, se quiser.
+      </p>
+
+      <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--line)">
+        <div style="font-size:12px;letter-spacing:.08em;color:var(--muted);font-weight:700">
+          O QUE NÃO EXISTE AQUI, E POR QUÊ
+        </div>
+        <p class="hint" id="ctLimite" style="white-space:pre-wrap;margin-top:10px"></p>
+      </div>
+    </div>
+  </section>
+
   <section class="page" id="page-about">
     <div class="field" style="max-width:620px">
       <p style="font-size:14px;line-height:1.6;color:var(--muted)">
@@ -879,11 +940,11 @@
   // interruptor. A lista fica inteira de propósito — ela vale como plano.
   const CATALOG = [
     {id:"unsavedSend", n:1,  t:"Número não salvo", d:"Envie mensagem digitando o número, sem salvar contato.", tag:""},
-    {id:"scheduleSend",n:2,  t:"Agendar mensagem", d:"Programe envios por data e hora (app precisa estar aberto).", tag:"warn"},
+    {id:"scheduleSend",n:2,  t:"Agendar mensagem", d:"<b>O único módulo do ZapLite que envia mensagem sozinho.</b> Na hora marcada ele abre a conversa, escreve o texto e clica em enviar — sem você por perto. Por isso <b>nasce desligado</b> e liga só com você lendo isto.<br><br>A fila é visível (o quê, para quem, quando), com cancelar, editar e <b>“ensaiar”</b> — o ensaio faz tudo menos clicar em enviar, e deixa o texto na caixa para você conferir antes de confiar. Agendar é em dois cliques: o segundo mostra o destinatário e o texto inteiro. O destino é sempre a <b>conversa aberta na hora de agendar</b>, guardada pelo identificador (nome muda, id não) — não existe campo “para quem”, que é onde mensagem vai parar na pessoa errada.<br><br><b>Só dispara com o app ABERTO e conectado</b>: o relógio é da página, não do Windows. Se a hora passar com o app fechado, <b>a mensagem NÃO é enviada atrasada</b> — ela aparece na fila marcada como atrasada e quem decide é você. Se a conversa não puder ser aberta, se a que abrir for outra, ou se o campo de escrever não for encontrado, o envio é <b>abortado e avisado</b> — nunca vai para o lugar errado. Todo disparo deixa aviso na tela e linha no <code>connection.log</code>.", tag:"warn"},
     {id:"quickReplies",n:3,  t:"Respostas rápidas", d:"Atalhos como <code>/pix</code> viram texto na caixa de mensagem quando você aperta espaço ou Tab. <b>Expandir é escrever, nunca enviar</b>: o gatilho jamais é Enter, e nada sai da caixa sem você mandar. Só dispara dentro da caixa de mensagem da conversa aberta — nunca na busca. A lista fica logo abaixo desta grade.", tag:"local"},
     {id:"antiDelete",  n:4,  t:"Anti-apagadas", d:"Guarda e revela mensagens apagadas para todos.", tag:"warn"},
     {id:"bulkUnread",  n:5,  t:"Ações em massa", d:"Marcar como não lida, arquivar e marcar como lida em várias conversas de uma vez, <b>sem abrir nenhuma</b> — as ações saem do menu do botão direito da própria linha. Abrir conversa mandaria recibo de leitura para quem escreveu; por isso “marcar como lida”, que manda o recibo por si só, vem separada e com o aviso antes. Só alcança as conversas renderizadas na lista.", tag:"local"},
-    {id:"noReadReceipt",n:6, t:"Ler sem confirmar", d:"Lê sem enviar confirmação de leitura.", tag:"warn"},
+    {id:"noReadReceipt",n:6, t:"Ler sem confirmar", d:"<b>NÃO VAI EXISTIR, e a razão está aqui inteira.</b> Foram avaliados os três caminhos possíveis e os três dessincronizam a sua conta:<br><br><b>1. Bloquear o recibo no WebSocket.</b> O tráfego do WhatsApp Web é cifrado (Noise) <b>antes</b> de chegar ao socket: o ZapLite vê bytes opacos e o tamanho deles, nunca o conteúdo — não há como distinguir “este quadro é o recibo de leitura” de “este quadro é a sua mensagem saindo”. E mesmo que houvesse: engolir um quadro que o cliente já contou como enviado deixa o seu aparelho achando que a conversa foi lida e o servidor achando que não. É exatamente a dessincronização conhecida — a conversa volta a não lida, o celular e o desktop discordam.<br><br><b>2. Remendar o código interno do WhatsApp Web</b> (a função que manda o “visto”). É o caminho que as extensões de terceiros usam. Ele funciona até a próxima atualização do WhatsApp, e a função remendada mora <b>no mesmo módulo que carrega as mensagens</b>: um remendo errado não “deixa de mandar o recibo”, ele para de entregar mensagem. E, quando funciona, produz a mesma divergência do item 1 — porque o problema não é o meio, é a ideia: o estado “lido” existe nos dois lados, e mentir só de um lado é a definição de dessincronizar.<br><br><b>3. Não abrir a conversa</b> — e este funciona, tanto que <b>já é o que o ZapLite faz</b>. O recibo nasce da ABERTURA. Por isso as <b>Ações em massa</b> arquivam e marcam sem abrir nada, o <b>Resumo do dia</b> lê pela prévia da lista, o <b>Lembrete</b> diz qual é a conversa em vez de abri-la e nenhum <b>atalho global</b> abre conversa. O que dá para ler sem recibo, você já lê — pela prévia e pelo aviso.<br><br>Um interruptor aqui só poderia entregar o item 1 ou o 2. Preferimos não ter o recurso a ter um que possa bagunçar a sua conta.", tag:""},
     {id:"pinExtra",    n:7,  t:"Fixar sem limite", d:"Uma faixa própria no topo da lista com as conversas que você fixou <b>além do limite do WhatsApp</b>. É uma segunda lista, <b>local e sem limite</b>, presa ao identificador da conversa (nome muda, id não) e guardada só nesta máquina — sobrevive a recarregar e a renavegar. <b>Não encosta na fixação do WhatsApp</b>: o ZapLite nunca clica em “Fixar conversa”, então os fixados de verdade continuam como estão. Abrir pela faixa só funciona se a linha estiver renderizada — a lista é virtualizada.", tag:"local"},
     {id:"contactNotes",n:8,  t:"Notas por contato", d:"Uma anotação privada por conversa, guardada <b>só nesta máquina</b> e presa ao identificador da conversa (nome muda, id não). Um bloquinho no cabeçalho da conversa aberta acende quando existe nota, e um ponto discreto marca as linhas da lista que têm uma. O caderno inteiro nunca atravessa para a página do WhatsApp: o ZapLite pede uma nota por vez ao lado nativo.", tag:"local"},
     {id:"reminders",   n:9,  t:"Lembretes", d:"“Responder o Fulano às 15h”, avisado pela mesma janela de notificação dos toasts — com o botão de fixar. <b>Só dispara com o ZapLite aberto</b>: o relógio é da página, não do Windows. Se a hora passar com o app fechado, o aviso aparece na próxima abertura, marcado como atrasado. O aviso não abre a conversa (abrir mandaria recibo de leitura); ele diz qual é.", tag:"local"},
@@ -905,7 +966,7 @@
     {id:"theme",       n:25, t:"Tema e acento", d:"Dark reforçado e cor personalizada.", tag:""},
     {id:"declutter",   n:26, t:"Esconder itens", d:"Some com Status, Canais e Comunidades.", tag:""},
     {id:"globalHotkey",n:27, t:"Atalho global", d:"Torna os atalhos <b>configuráveis</b>: esconder/mostrar o app, abrir o Painel e (opcional) abrir o formulário de novo lembrete — registrados no Windows, então funcionam com a janela escondida. <b>Nasce desligado</b> porque ligá-lo faz o ZapLite tomar combinações de tecla do sistema inteiro. Se outro programa já tiver tomado uma delas, o registro falha, o app segue normal e a tabela abaixo diz qual falhou e por quê. Nenhuma ação abre conversa (abrir mandaria recibo de leitura).", tag:"local"},
-    {id:"multiAccount",n:28, t:"Multi-conta", d:"Contas pessoal e trabalho em abas.", tag:"warn"},
+    {id:"multiAccount",n:28, t:"Multi-conta", d:"<b>Uma conta de cada vez, com isolamento total</b> — e não “em abas”, como esta linha prometia antes. Criar, listar, remover e trocar de conta ficam na aba <b>CONTAS</b> deste painel; não há interruptor aqui porque isto não é um módulo da página, é a estrutura do app.<br><br>Cada conta tem a <b>própria sessão do WhatsApp</b> (perfil próprio do WebView2 — sem isso as sessões se sobrescrevem), o próprio <code>settings.json</code> e o próprio <code>connection.log</code>. Como cada conta é uma pasta, notas, regras de notificação, fixados extras, respostas rápidas, lembretes e agendamentos <b>não têm por onde se misturar</b>. Trocar de conta reinicia o ZapLite na conta escolhida.<br><br><b>Duas contas abertas ao mesmo tempo não existem</b>, e o porquê está escrito na aba CONTAS.", tag:""},
     {id:"privacyBlur", n:29, t:"Blur ao sair do foco", d:"Borra a tela quando o app perde o foco.", tag:""},
     {id:"exportChat",  n:30, t:"Exportar conversa", d:"Salva a conversa aberta em <code>.txt</code> ou <code>.json</code> pelo diálogo de “salvar como” do Windows, com progresso e “abrir a pasta” no fim. Limite honesto, dito na tela e escrito dentro do arquivo: sai <b>só o que está renderizado</b> — a lista é virtualizada e o ZapLite não a rola sozinho. O painel mostra o número real de mensagens capturadas antes de você salvar.", tag:"local"},
     {id:"smartNotify", n:31, t:"Notificações por contato", d:"Janela, som e persistência diferentes por contato ou grupo.", tag:"warn"},
@@ -947,7 +1008,25 @@
     // src-tauri/src/lib.rs): atalho global mora no sistema operacional, nao na
     // pagina. Nenhum dos cinco chama IA e nenhum manda byte para fora.
     "pinExtra","advSearch","globalHotkey","stickerMaker","imgToSticker",
+    // ONDA 4 - `modulos/agendar.js`, com a sua chamada em
+    // `injection/src/main.js`. E o UNICO modulo do app que envia mensagem
+    // sozinho, e o unico que nasce desligado por causa disso.
+    "scheduleSend",
   ]);
+
+  /* Terceiro balde, e ele existe porque os outros dois mentiriam sobre estes
+     dois ids. "Implementado" aqui significa "tem interruptor nesta grade"; e
+     "ainda não existe" significa "está no caminho". Nenhum dos dois descreve:
+
+       · `multiAccount` — CONSTRUÍDO, e não é módulo da página: é a estrutura
+         do app (perfil do WebView2, settings.json e connection.log por conta).
+         Mora na aba CONTAS. Um interruptor aqui não teria o que ligar.
+       · `noReadReceipt` — RECUSADO, com o motivo inteiro no cartão. Deixá-lo
+         em "ainda não existe" seria prometer para depois algo que foi
+         decidido não fazer.
+
+     MANUTENÇÃO: um id só entra aqui com a razão escrita no próprio cartão. */
+  const FORA_DA_GRADE = new Set(["multiAccount", "noReadReceipt"]);
 
   const PALETTE = ["#22d3aa","#7c3aed","#0ea5e9","#f43f5e","#f59e0b","#10b981","#e879f9","#f8fafc"];
   let S = {};
@@ -967,8 +1046,13 @@
     planGrid.innerHTML = "";
     S.modules = S.modules || {};
 
+    const foraGrid = document.getElementById("modForaGrid");
+    const foraSec = document.getElementById("modForaSec");
+    foraGrid.innerHTML = "";
+
     const prontos = CATALOG.filter(m => IMPLEMENTADOS.has(m.id));
-    const planejados = CATALOG.filter(m => !IMPLEMENTADOS.has(m.id));
+    const fora = CATALOG.filter(m => !IMPLEMENTADOS.has(m.id) && FORA_DA_GRADE.has(m.id));
+    const planejados = CATALOG.filter(m => !IMPLEMENTADOS.has(m.id) && !FORA_DA_GRADE.has(m.id));
 
     prontos.forEach(m=>{
       const on = !!S.modules[m.id];
@@ -1007,6 +1091,26 @@
         </div>`;
       planGrid.appendChild(cell);
     });
+
+    // Fora da grade: sem `<input>`, como os planejados, mas com o selo certo —
+    // "construído" ou "recusado", nunca "planejado".
+    fora.forEach(m=>{
+      const recusado = m.id === "noReadReceipt";
+      const cell = document.createElement("div");
+      cell.className = "cell plan";
+      cell.title = recusado
+        ? "Recusado: o motivo está no cartão."
+        : "Construído, fora da grade de interruptores.";
+      cell.innerHTML = `
+        <span class="idx">${String(m.n).padStart(2,"0")}</span>
+        <h3>${m.t}</h3>
+        <p>${m.d}</p>
+        <div class="foot">
+          <span class="badge ${recusado ? "warn" : "local"}">${recusado ? "recusado" : "construído — aba CONTAS"}</span>
+        </div>`;
+      foraGrid.appendChild(cell);
+    });
+    foraSec.hidden = fora.length === 0;
 
     planSec.hidden = planejados.length === 0;
     document.getElementById("modPlanTitulo").textContent =
@@ -1166,12 +1270,114 @@
       if(!r.length){ alvo.textContent = "Nenhum registro ainda. Clique em “Salvar e aplicar” primeiro."; return; }
       alvo.textContent = r.map(function(x){
         return (x.ok ? "ok     " : "FALHOU ") + (x.combo || "(vazio)") + "   " + x.rotulo +
-               (x.ok ? "" : "
-         motivo: " + (x.erro||"?"));
-      }).join("
-");
+               (x.ok ? "" : "\n         motivo: " + (x.erro||"?"));
+      }).join("\n");
     }catch(e){ alvo.textContent = "nao deu para ler o estado dos atalhos: " + (e&&e.message||e); }
   };
+
+  /* --- O settings.json ilegível ---------------------------------------------
+     Antes, um settings.json com BOM UTF-8 (o que o Bloco de Notas grava por
+     padrão) fazia o Rust devolver `{}` e o app voltar a TODOS os padrões, sem
+     uma palavra — e o primeiro "Salvar e aplicar" gravava esse `{}` por cima.
+     Agora o BOM é aceito; o que é realmente inválido vira esta faixa, uma
+     linha no connection.log e um aviso na janela de toast. */
+  (async function(){
+    const faixa = document.getElementById("cfgAviso");
+    const pintar = (m)=>{
+      if(!m){ faixa.hidden = true; return; }
+      faixa.hidden = false;
+      faixa.textContent = "A CONFIGURAÇÃO NÃO PÔDE SER LIDA\n\n" + m +
+        "\n\nO que você vê neste painel são os PADRÕES DE FÁBRICA, não a sua configuração. " +
+        "Se salvar agora, é isto que passa a valer.";
+    };
+    try{ pintar(await invoke("settings_saude")); }catch(_){}
+    if(window.__TAURI__ && window.__TAURI__.event){
+      window.__TAURI__.event.listen("zl-settings-quebrado", ev => pintar(ev.payload)).catch(()=>{});
+    }
+  })();
+
+  /* --- 28: CONTAS -----------------------------------------------------------
+     Tudo aqui é comando do Rust: a lista mora em `contas.json`, fora do
+     settings.json de qualquer conta (senão trocar de conta faria a lista de
+     contas sumir, e um settings quebrado levaria junto o caminho de volta). */
+  async function renderContas(){
+    const box = document.getElementById("ctLista");
+    if(!box) return;
+    let est;
+    try{ est = await invoke("contas_estado"); }
+    catch(e){ box.textContent = "não deu para ler as contas: " + (e&&e.message||e); return; }
+    document.getElementById("ctLimite").textContent = est.limite || "";
+    box.innerHTML = "";
+    (est.contas||[]).forEach(function(c, i){
+      const ativa = c.slug === est.ativa;
+      const f = document.createElement("div");
+      f.className = "row";
+      f.style.cssText = "display:flex;align-items:center;gap:12px;flex-wrap:wrap;" +
+        "padding:12px 14px;border:1px solid var(--line);border-radius:10px;margin-bottom:10px" +
+        (ativa ? ";border-color:var(--accent)" : "");
+      const nome = document.createElement("div");
+      nome.style.cssText = "flex:1 1 220px;min-width:180px";
+      nome.innerHTML = '<b style="color:var(--txt)"></b><br><span class="hint" style="margin:0;font-size:11.5px"></span>';
+      nome.querySelector("b").textContent = c.rotulo + (ativa ? "  ·  ABERTA AGORA" : "");
+      nome.querySelector("span").textContent = (est.pastas && est.pastas[i]) || "";
+      f.appendChild(nome);
+
+      if(!ativa){
+        const t = document.createElement("button");
+        t.className = "primary";
+        t.style.cssText = "background:transparent;color:var(--accent);border:1px solid var(--accent)";
+        t.textContent = "Abrir esta conta";
+        t.onclick = async function(){
+          if(!confirm(
+            "Trocar para “" + c.rotulo + "” FECHA o ZapLite e o abre de novo nessa conta.\n\n" +
+            "A sessão desta conta continua salva no disco — você não precisa escanear QR de novo " +
+            "para voltar. Se a conta escolhida nunca foi usada, ela vai pedir o QR dela.\n\nTrocar agora?"
+          )) return;
+          try{ await invoke("conta_trocar", { slug: c.slug }); }
+          catch(e){ alert("não deu para trocar de conta: " + (e&&e.message||e)); }
+        };
+        f.appendChild(t);
+
+        if(c.slug !== "principal"){
+          const r = document.createElement("button");
+          r.className = "primary";
+          r.style.cssText = "background:transparent;color:var(--muted);border:1px solid var(--line)";
+          r.textContent = "Remover do registro";
+          r.onclick = async function(){
+            if(!confirm(
+              "Remover “" + c.rotulo + "” tira a conta desta lista.\n\n" +
+              "A PASTA DELA NÃO É APAGADA — a sessão do WhatsApp continua lá. " +
+              "Se quiser apagar de verdade, apague a pasta à mão depois.\n\nRemover do registro?"
+            )) return;
+            try{
+              const pasta = await invoke("conta_remover", { slug: c.slug });
+              alert("Removida do registro.\n\nA pasta continua em:\n" + pasta);
+              renderContas();
+            }catch(e){ alert(e&&e.message||e); }
+          };
+          f.appendChild(r);
+        }
+      }
+      box.appendChild(f);
+    });
+  }
+
+  (function(){
+    const b = document.getElementById("ctCriar");
+    if(!b) return;
+    b.onclick = async function(){
+      const campo = document.getElementById("ctNome");
+      const nome = (campo.value||"").trim();
+      if(!nome) return alert("Dê um nome para a conta (ex.: Trabalho).");
+      try{
+        const c = await invoke("conta_criar", { rotulo: nome });
+        campo.value = "";
+        await renderContas();
+        alert("Conta “" + c.rotulo + "” criada.\n\nEla ainda não tem sessão: o QR aparece quando " +
+              "você clicar em “Abrir esta conta”.");
+      }catch(e){ alert(e&&e.message||e); }
+    };
+  })();
 
   function renderCustom(){
     const sw = document.getElementById("swatches");
@@ -1996,8 +2202,11 @@
       contactNotes:true,quickReplies:true,reminders:true,
       bulkUnread:true,exportChat:true,bulkDownload:true,
       pinExtra:true,advSearch:true,stickerMaker:true,imgToSticker:true,
-      globalHotkey:false}, S.modules||{});
+      globalHotkey:false,
+      // 02 — o unico que envia mensagem sozinho: nasce desligado nos dois lados.
+      scheduleSend:false}, S.modules||{});
     renderMods(); renderQR(); renderHK(); renderRules(); renderCustom(); renderIA();
+    renderContas();
     wRefresh();
     renderMention(); carregarChats();
     document.getElementById("status").textContent="pronto";
