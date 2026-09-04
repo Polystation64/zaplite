@@ -10,6 +10,7 @@ import { guarded, invoke } from "../ponte.js";
 // SÓ aqui dentro, sem interruptor e sem entrada no catálogo — três
 // recursos que o Painel jurava não existir e que estavam ligados.
 import { checarGolpe } from "./golpe.js";
+import { itemDeMenuFigurinha } from "./figurinha-imagem.js";
 import { ocrDaBolha } from "./ocr.js";
 import { traduzirBolha } from "./traduzir.js";
 
@@ -155,6 +156,12 @@ export function registrarMenuContexto() {
               guarded(() => ocrDaBolha(bolha), "Texto da imagem"),
             ]);
           }
+          /* 19 — "transformar em figurinha". O item é decidido pelo PRÓPRIO
+             módulo (ele confere o interruptor e a presença da imagem), pelo
+             mesmo motivo dos itens de IA acima: escrito aqui dentro, seria um
+             recurso sem interruptor e sem entrada no catálogo. */
+          const fig = itemDeMenuFigurinha(bolha);
+          if (fig) itens.push(fig);
           itens.push([
             "💾",
             "Salvar imagem…",

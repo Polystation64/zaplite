@@ -49,6 +49,11 @@ import { registrarLembretes } from "./modulos/lembretes.js";
 import { registrarAcoesEmMassa } from "./modulos/acoes-massa.js";
 import { registrarExportar } from "./modulos/exportar.js";
 import { registrarBaixarMassa } from "./modulos/baixar-massa.js";
+import { registrarPinExtra } from "./modulos/pin-extra.js";
+import { registrarBuscaAvancada } from "./modulos/busca-avancada.js";
+import { registrarAtalhoGlobal } from "./modulos/atalho-global.js";
+import { registrarFigurinhaCriar } from "./modulos/figurinha-criar.js";
+import { registrarFigurinhaImagem } from "./modulos/figurinha-imagem.js";
 
 /* 1. Camada de conexão: precisa do gancho no WebSocket ANTES de a página
       abrir o primeiro socket. É o primeiro efeito do bundle. */
@@ -102,6 +107,28 @@ registrarNotas();
 registrarLembretes();
 registrarBaixarMassa();
 registrarExportar();
+
+/* 2d. ONDA 3 — os cinco que faltavam do catálogo. Vêm por último pelo mesmo
+      motivo das ondas anteriores: são os mais novos, e a ordem de tudo o que
+      já existia fica intacta.
+
+      · `pinExtra` e `busca` acrescentam uma entrada no dock; o primeiro tem
+        também um temporizador de 1,5 s que remonta a faixa quando o SPA recria
+        a árvore (o mesmo ritmo do indicador das notas), e nenhum dos dois
+        observa a árvore inteira.
+      · `atalho-global` só escuta um evento do Rust — o registro do atalho no
+        Windows é do lado nativo, porque tecla apertada com a janela escondida
+        nunca chega a um `keydown` de página.
+      · os dois de figurinha não fazem nada até um clique, e o desenho e o
+        encoder WebP dos dois são o mesmo arquivo (`figurinha.js`).
+
+      Nenhum dos cinco envia mensagem, escreve na caixa de mensagem ou abre
+      conversa por conta própria. */
+registrarPinExtra();
+registrarBuscaAvancada();
+registrarAtalhoGlobal();
+registrarFigurinhaCriar();
+registrarFigurinhaImagem();
 
 /* 4. O Rust chama isto ao salvar settings. */
 window.__ZAPLITE_RELOAD__ = applyAll;

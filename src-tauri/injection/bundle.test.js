@@ -647,6 +647,135 @@ teste("os avisos honestos da onda 2 sobrevivem ao empacotamento", () => {
   );
 });
 
+/* ==========================================================================
+   ONDA 3 — as funções PURAS dos cinco módulos novos.
+   Extraídas do bundle.js de verdade, como as demais: um teste que exercita uma
+   cópia do código só prova que a cópia funciona.
+   ========================================================================== */
+const normalizar = new Function(extrair("normalizar") + "; return normalizar;")();
+const dataComparavel = new Function(extrair("dataComparavel") + "; return dataComparavel;")();
+const casaMensagem = new Function(
+  extrair("normalizar") + extrair("dataComparavel") + extrair("casaMensagem") + "; return casaMensagem;"
+)();
+const enquadrar = new Function(
+  constante("LADO") + extrair("enquadrar") + "; return enquadrar;"
+)();
+const distanciaCor = new Function(extrair("distanciaCor") + "; return distanciaCor;")();
+
+teste("normalizar tira acento e caixa (senao 'cafe' nao acha 'cafe' com acento)", () => {
+  assert.strictEqual(normalizar("  CAFÉ  "), "cafe");
+  assert.strictEqual(normalizar("Você JÁ viu?"), "voce ja viu?");
+  assert.strictEqual(normalizar(null), "");
+});
+
+teste("dataComparavel entende o carimbo do WhatsApp e o do <input type=date>", () => {
+  // o que o `data-pre-plain-text` entrega
+  assert.strictEqual(dataComparavel("15/08/2026"), 20260815);
+  assert.strictEqual(dataComparavel("5/8/26"), 20260805);
+  // o que o campo de data do painel entrega
+  assert.strictEqual(dataComparavel("2026-08-15"), 20260815);
+  // ordenavel como numero, que e a razao de ser deste formato
+  assert.ok(dataComparavel("14/08/2026") < dataComparavel("15/08/2026"));
+  assert.ok(dataComparavel("31/12/2025") < dataComparavel("01/01/2026"));
+});
+
+teste("dataComparavel devolve 0 para o que nao e data — e nunca chuta", () => {
+  for (const s of ["", "   ", "Ontem", "16:35", "quarta-feira", "45/13/2026", "abc"]) {
+    assert.strictEqual(dataComparavel(s), 0, "nao era data: " + JSON.stringify(s));
+  }
+});
+
+teste("filtro de mensagem casa por texto, autor e tipo de midia", () => {
+  const m = { texto: "Chegou o boleto do condomínio", autor: "Sílvia", midia: "", data: "15/08/2026" };
+  assert.ok(casaMensagem(m, { texto: "BOLETO" }).casa, "busca sem caixa");
+  assert.ok(casaMensagem(m, { texto: "condominio" }).casa, "busca sem acento");
+  assert.ok(casaMensagem(m, { remetente: "silvia" }).casa, "remetente sem acento");
+  assert.ok(!casaMensagem(m, { remetente: "marcelo" }).casa);
+  assert.ok(casaMensagem(m, { tipo: "texto" }).casa, "mensagem sem midia e do tipo texto");
+  assert.ok(!casaMensagem(m, { tipo: "imagem" }).casa);
+  const foto = Object.assign({}, m, { midia: "imagem" });
+  assert.ok(casaMensagem(foto, { tipo: "imagem" }).casa);
+  assert.ok(!casaMensagem(foto, { tipo: "texto" }).casa, "mensagem COM midia nao e 'so texto'");
+});
+
+teste("filtro de data respeita os limites e CONTA o que nao tem carimbo", () => {
+  const m = { texto: "oi", autor: "", midia: "", data: "15/08/2026" };
+  assert.ok(casaMensagem(m, { de: "2026-08-01", ate: "2026-08-31" }).casa);
+  assert.ok(!casaMensagem(m, { de: "2026-08-16" }).casa, "antes do inicio da janela");
+  assert.ok(!casaMensagem(m, { ate: "2026-08-14" }).casa, "depois do fim da janela");
+
+  // A bolha SEM `data-pre-plain-text` e o caso que nao pode sumir calado: ela
+  // nao casa, mas volta marcada para o painel poder dizer quantas foram.
+  const semData = { texto: "oi", autor: "", midia: "", data: "" };
+  const r = casaMensagem(semData, { de: "2026-08-01" });
+  assert.strictEqual(r.casa, false);
+  assert.strictEqual(r.semData, true, "mensagem sem carimbo tem que ser CONTADA, nao descartada em silencio");
+  // sem filtro de data ela volta a ser vista
+  assert.ok(casaMensagem(semData, { texto: "oi" }).casa);
+  assert.strictEqual(casaMensagem(semData, { texto: "oi" }).semData, false);
+});
+
+teste("enquadrar cabe a imagem inteira no quadrado com zoom 1 (contain, sem esticar)", () => {
+  // paisagem 1000x500 -> 512x256, centralizada na vertical
+  const q = enquadrar(1000, 500, 1, 0, 0);
+  assert.strictEqual(Math.round(q.w), 512);
+  assert.strictEqual(Math.round(q.h), 256);
+  assert.strictEqual(Math.round(q.x), 0);
+  assert.strictEqual(Math.round(q.y), 128);
+  // proporcao preservada: a figurinha nao pode sair achatada
+  assert.ok(Math.abs(q.w / q.h - 1000 / 500) < 0.001);
+
+  // retrato 500x1000 -> 256x512
+  const r = enquadrar(500, 1000, 1, 0, 0);
+  assert.strictEqual(Math.round(r.w), 256);
+  assert.strictEqual(Math.round(r.h), 512);
+  assert.strictEqual(Math.round(r.x), 128);
+
+  // quadrada 512x512 preenche exatamente
+  const s2 = enquadrar(512, 512, 1, 0, 0);
+  assert.strictEqual(Math.round(s2.w), 512);
+  assert.strictEqual(Math.round(s2.x), 0);
+});
+
+teste("enquadrar: zoom transborda o quadrado e o deslocamento move de verdade", () => {
+  const z = enquadrar(1000, 500, 2, 0, 0);
+  assert.strictEqual(Math.round(z.w), 1024, "zoom 2 dobra o tamanho");
+  assert.ok(z.x < 0, "com zoom a imagem transborda: o quadrado vira recorte");
+  const d = enquadrar(1000, 500, 1, 1, 0);
+  assert.strictEqual(Math.round(d.x - enquadrar(1000, 500, 1, 0, 0).x), 256, "dx=1 move meio lado");
+  // imagem sem dimensao nao pode virar NaN no drawImage
+  const nada = enquadrar(0, 0, 1, 0, 0);
+  assert.strictEqual(nada.w, 0);
+  assert.strictEqual(nada.h, 0);
+});
+
+teste("distanciaCor e zero para a mesma cor e cresce com a diferenca", () => {
+  assert.strictEqual(distanciaCor(255, 255, 255, 255, 255, 255), 0);
+  assert.strictEqual(distanciaCor(0, 0, 0, 255, 255, 255), 3 * 255 * 255);
+  assert.ok(distanciaCor(250, 250, 250, 255, 255, 255) < distanciaCor(200, 200, 200, 255, 255, 255));
+});
+
+teste("os limites honestos da onda 3 sobrevivem ao empacotamento", () => {
+  // Cada um destes textos e a parte do modulo que o impede de mentir sobre o
+  // que ele faz. Some o texto, some o limite — e o modulo passa a prometer.
+  assert.ok(
+    SRC.includes("REMO\\xC7\\xC3O POR COR"),
+    "sumiu a correcao honesta do 'remove fundo' do criador de figurinhas"
+  );
+  assert.ok(
+    SRC.includes("n\\xE3o busca no hist\\xF3rico do WhatsApp"),
+    "sumiu o limite do escopo da busca avancada"
+  );
+  assert.ok(
+    SRC.includes("nunca clica "),
+    "sumiu a promessa de que o pinExtra nao encosta nos fixados do WhatsApp"
+  );
+  assert.ok(
+    SRC.includes("recibo de leitura"),
+    "sumiu a razao de 'abrir a ultima nao lida' ter ficado fora dos atalhos"
+  );
+});
+
 (async () => {
   let falhas = 0;
   for (const [nome, fn] of casos) {

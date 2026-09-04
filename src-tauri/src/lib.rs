@@ -259,6 +259,15 @@ const CHAVES_PUBLICAS: &[&str] = &[
     "ia",
     "quickReplies",
     "reminders",
+    // ONDA 3 — `pinExtra` é a lista de conversas que o usuário fixou ALÉM do
+    // limite do WhatsApp. Entra aqui pelo mesmo teste das outras: a página é
+    // quem precisa dela (é ela que desenha a faixa e marca as linhas), e o que
+    // ela contém — jid e rótulo de conversas que estão renderizadas na lista —
+    // a página já lê do próprio DOM (`chatIdDaLinha`, `nomeDaLinha`). Não é
+    // agenda: é um recorte que o usuário fez das conversas que ele mesmo tem
+    // abertas na tela. `contactNotes` continua fora, porque lá o conteúdo é
+    // texto que só existe no ZapLite.
+    "pinExtra",
 ];
 
 /// `notify` NÃO está na lista acima de propósito: as regras carregam os NOMES
@@ -322,6 +331,10 @@ pub(crate) fn write_settings(app: &AppHandle, settings: Value) -> Result<(), Str
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.eval("window.__ZAPLITE_RELOAD__ && window.__ZAPLITE_RELOAD__()");
     }
+    // 27 — o atalho global mora no sistema operacional, não na página: nenhum
+    // `__ZAPLITE_RELOAD__` o alcança. Reaplicar aqui é o que faz o Painel
+    // valer sem reiniciar o app. Nunca propaga erro (ver `aplicar_atalhos`).
+    aplicar_atalhos(app);
     Ok(())
 }
 
@@ -345,7 +358,7 @@ fn gravar_settings(app: &AppHandle, settings: Value) -> Result<(), String> {
 
 /// Os únicos ramos que a origem remota escreve. Qualquer outro nome é recusado
 /// com mensagem, não em silêncio.
-const RAMOS_GRAVAVEIS_PELA_PAGINA: &[&str] = &["quickReplies", "reminders"];
+const RAMOS_GRAVAVEIS_PELA_PAGINA: &[&str] = &["quickReplies", "reminders", "pinExtra"];
 
 /// Tamanho máximo de um ramo vindo da página, em bytes de JSON. Não é
 /// desconfiança do usuário: é o teto que impede que um defeito de laço num
@@ -1388,6 +1401,51 @@ mod testes {
         }
     }
 
+    /// ONDA 3 — `pinExtra` é a faixa de fixados locais. Ela atravessa (é a
+    /// página que desenha a faixa e marca as linhas) e é gravável pela página
+    /// (o clique de fixar acontece lá). O que ela contém — jid e rótulo de
+    /// conversas RENDERIZADAS — a página já lê do próprio DOM; o caderno de
+    /// notas continua do outro lado da linha.
+    #[test]
+    fn fixados_extras_atravessam_e_sao_gravaveis_pela_pagina() {
+        let completo = json!({
+            "pinExtra": [{ "jid": "5521999999999@c.us", "nome": "Silvia" }],
+            "contactNotes": { "5521999999999@c.us": "nao mencionar o irmao" },
+        });
+        let publico = filtrar_publicas(&completo);
+        assert_eq!(publico["pinExtra"][0]["jid"], "5521999999999@c.us");
+        assert!(publico.get("contactNotes").is_none(), "o caderno de notas vazou junto");
+        assert!(RAMOS_GRAVAVEIS_PELA_PAGINA.contains(&"pinExtra"));
+    }
+
+    /// 27 — a tabela de atalhos. Cada ação tem id e rótulo, e só o
+    /// `toggleWindow` nasce com combinação: ligar um atalho global a mais sem
+    /// o usuário pedir tira uma combinação do sistema inteiro dele.
+    #[test]
+    fn tabela_de_atalhos_tem_padrao_conservador_e_ids_unicos() {
+        let mut ids: Vec<&str> = ATALHOS.iter().map(|(a, _, _)| *a).collect();
+        ids.sort_unstable();
+        let antes = ids.len();
+        ids.dedup();
+        assert_eq!(antes, ids.len(), "id de ação repetido na tabela de atalhos");
+
+        for (acao, padrao, rotulo) in ATALHOS {
+            assert!(!rotulo.is_empty(), "ação {acao} sem rótulo para o Painel");
+            if *acao == "toggleWindow" {
+                assert_eq!(*padrao, "ctrl+shift+w", "o atalho histórico não pode mudar sozinho");
+            }
+        }
+        let com_padrao = ATALHOS.iter().filter(|(_, p, _)| !p.is_empty()).count();
+        assert_eq!(com_padrao, 2, "só esconder/mostrar e abrir o Painel nascem com combinação");
+
+        // "abrir a última não lida" ficou de fora de propósito: abrir conversa
+        // manda recibo de leitura. Se alguém a acrescentar, este teste avisa.
+        assert!(
+            !ATALHOS.iter().any(|(a, _, _)| a.contains("unread") || a.contains("naoLida")),
+            "nenhuma ação de atalho pode ABRIR conversa: abrir manda recibo de leitura"
+        );
+    }
+
     #[test]
     fn chat_id_de_nota_recusa_o_que_nao_e_jid() {
         assert!(chat_id_plausivel("5521999999999@c.us"));
@@ -1557,15 +1615,14 @@ pub fn run() {
         // K2(b): o plugin sobe SEM atalho nenhum. O registro acontece no
         // `setup`, onde a falha é tratável. Vale para qualquer outro app que já
         // tenha tomado o Ctrl+Shift+W.
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        alternar_janela(app);
-                    }
-                })
-                .build(),
-        )
+        // 27 — SEM `with_handler`. O handler do builder dispara para TODOS os
+        // atalhos, E ainda por cima somado ao handler por atalho do
+        // `on_shortcut` (medido no fonte do plugin 2.3.2: o event handler chama
+        // os dois). Com um atalho só isso significava alternar a janela DUAS
+        // vezes por tecla — mostrar e esconder no mesmo instante. Com três
+        // ações significaria que qualquer uma delas também alternaria a janela.
+        // Quem trata cada atalho é o `on_shortcut` de `aplicar_atalhos`.
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(notify::ToastState::default())
         // W1(b): lista de conversas que a página reporta, para o Painel poder
         // oferecer caixinhas em vez de uma regra digitada por grupo.
@@ -1582,6 +1639,8 @@ pub fn run() {
         // Onda 2: as pastas que o USUÁRIO apontou no diálogo nativo. Sem isto
         // `save_media_em` recusaria tudo — é ele que sabe o que foi escolhido.
         .manage(PastasEscolhidas::default())
+        // 27 — o resultado real do último registro de atalhos, para o Painel.
+        .manage(AtalhosEstado::default())
         .invoke_handler(tauri::generate_handler![
             load_settings,
             load_settings_public,
@@ -1594,6 +1653,9 @@ pub fn run() {
             note_set,
             escolher_pasta,
             save_media_em,
+            // 27 — só LÊ o que o registro dos atalhos devolveu. Só o Painel o
+            // cita; a página do WhatsApp não precisa saber de atalho nenhum.
+            atalhos_estado,
             open_settings,
             open_log_dir,
             // B2: o relatório de diagnóstico em texto. Só o Painel o cita
@@ -1666,7 +1728,7 @@ pub fn run() {
             // Se outro app já tomou o Ctrl+Shift+W (ou o registro falhar por
             // qualquer motivo), o ZapLite segue rodando sem ele e o log diz
             // exatamente o que aconteceu.
-            registrar_atalho(app.handle());
+            aplicar_atalhos(app.handle());
 
             // P2 — arranque A FRIO por um link: o Windows lançou este processo
             // com a URL no argv e não há instância viva para recebê-la. O alvo
@@ -1730,25 +1792,132 @@ pub fn run() {
     });
 }
 
-/// Registra o Ctrl+Shift+W. **Nunca** propaga erro: falhar aqui não pode
-/// derrubar o app (K2b). O caso real é outro programa já ter tomado o atalho —
-/// e foi o mesmo mecanismo que matava a segunda instância do próprio ZapLite.
-fn registrar_atalho(app: &AppHandle) {
+/* ==========================================================================
+   27 — ATALHO GLOBAL CONFIGURÁVEL
+   --------------------------------------------------------------------------
+   Antes eram dois atalhos FIXOS: `ctrl+shift+w` (registrado aqui) e
+   `ctrl+shift+z` (um `keydown` dentro da página, que por isso só funcionava com
+   a janela do WhatsApp já em foco — ou seja, não era atalho global coisa
+   nenhuma). Este bloco os torna configuráveis e acrescenta uma terceira ação.
+
+   O QUE NÃO ENTROU, e por quê: "abrir a última conversa não lida". Abrir uma
+   conversa manda RECIBO DE LEITURA para quem escreveu — é a mesma linha que as
+   ações em massa e o resumo do dia se recusam a cruzar. Um atalho de teclado
+   que dispara recibo por acidente, com a janela escondida, é pior do que a
+   comodidade que ele oferece. As três ações abaixo não escrevem, não enviam e
+   não abrem conversa nenhuma.
+
+   FALHA DE REGISTRO NUNCA DERRUBA O APP (K2b): o caso real é outro programa já
+   ter tomado a combinação, e foi esse mesmo mecanismo que matava a segunda
+   instância do próprio ZapLite. Cada ação é registrada por si; a que falhar
+   entra no relatório com o motivo, e o Painel o mostra.
+   ========================================================================== */
+
+/// (id da ação, combinação padrão, rótulo para o Painel).
+const ATALHOS: &[(&str, &str, &str)] = &[
+    ("toggleWindow", "ctrl+shift+w", "Esconder / mostrar o ZapLite"),
+    ("openPanel", "ctrl+shift+z", "Abrir o Painel do ZapLite"),
+    // Nasce VAZIO = desligado. Um atalho global a mais, que o usuário não
+    // pediu, é uma combinação a menos disponível para os outros programas dele.
+    ("newReminder", "", "Novo lembrete (abre o formulário)"),
+];
+
+/// O resultado REAL do último registro, por ação. É o que o Painel lê: dizer
+/// "atalho configurado" quando o sistema recusou a combinação seria a mesma
+/// promessa falsa que a área de "planejados" existe para evitar.
+#[derive(Default)]
+pub struct AtalhosEstado(Mutex<Vec<Value>>);
+
+#[tauri::command]
+fn atalhos_estado(app: AppHandle) -> Vec<Value> {
+    app.state::<AtalhosEstado>().0.lock().unwrap().clone()
+}
+
+fn executar_atalho(app: &AppHandle, acao: &str) {
+    match acao {
+        "toggleWindow" => alternar_janela(app),
+        "openPanel" => {
+            let h = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = open_settings(h, None).await;
+            });
+        }
+        // A página é quem tem o formulário de lembrete. Aqui só trazemos a
+        // janela para a frente e avisamos — nada é escrito nem agendado.
+        "newReminder" => {
+            if let Some(w) = app.get_webview_window("main") {
+                focar_janela_principal(app);
+                let _ = w.emit("zaplite://atalho", json!({ "acao": "newReminder" }));
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Registra (ou re-registra) todos os atalhos conforme o settings.json.
+/// Idempotente: começa desregistrando tudo, então pode ser chamada no boot e a
+/// cada `save_settings` sem acumular registros.
+fn aplicar_atalhos(app: &AppHandle) {
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
     let gs = app.global_shortcut();
-    match gs.on_shortcut("ctrl+shift+w", |app, _s, event| {
-        if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-            alternar_janela(app);
+    let _ = gs.unregister_all();
+
+    let s = read_settings(app);
+    // Interruptor do catálogo. DESLIGADO = exatamente o comportamento
+    // histórico: só o ctrl+shift+w, e o Painel continua no ctrl+shift+z da
+    // página. Ligar o módulo é que traz a configuração e a terceira ação.
+    let ligado = s
+        .get("modules")
+        .and_then(|m| m.get("globalHotkey"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let cfg = s.get("hotkeys").cloned().unwrap_or_else(|| json!({}));
+
+    let mut relatorio = Vec::new();
+    for (acao, padrao, rotulo) in ATALHOS {
+        let combo = if !ligado {
+            if *acao == "toggleWindow" { (*padrao).to_string() } else { String::new() }
+        } else {
+            // Chave presente com string vazia é uma escolha do usuário
+            // ("não quero este"), não uma ausência: só a ausência cai no padrão.
+            match cfg.get(*acao).and_then(|v| v.as_str()) {
+                Some(v) => v.trim().to_lowercase(),
+                None => (*padrao).to_string(),
+            }
+        };
+        if combo.is_empty() {
+            relatorio.push(json!({
+                "acao": acao, "rotulo": rotulo, "combo": "", "ok": false,
+                "erro": if ligado { "desligado por você" } else { "módulo Atalho global desligado" },
+            }));
+            continue;
         }
-    }) {
-        Ok(()) => connection::note_window_event(app, "atalho global ctrl+shift+w registrado"),
-        Err(e) => connection::note_window_event(
-            app,
-            &format!(
-                "atalho global ctrl+shift+w INDISPONÍVEL ({e}); o app segue normal, só sem o atalho"
-            ),
-        ),
+        let alvo = (*acao).to_string();
+        match gs.on_shortcut(combo.as_str(), move |app, _s, event| {
+            if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                executar_atalho(app, &alvo);
+            }
+        }) {
+            Ok(()) => {
+                connection::note_window_event(app, &format!("atalho global {combo} → {acao}"));
+                relatorio.push(json!({
+                    "acao": acao, "rotulo": rotulo, "combo": combo, "ok": true, "erro": "",
+                }));
+            }
+            Err(e) => {
+                let motivo = format!("{e}");
+                connection::note_window_event(
+                    app,
+                    &format!("atalho global {combo} INDISPONÍVEL ({motivo}); o app segue normal"),
+                );
+                relatorio.push(json!({
+                    "acao": acao, "rotulo": rotulo, "combo": combo, "ok": false,
+                    "erro": motivo,
+                }));
+            }
+        }
     }
+    *app.state::<AtalhosEstado>().0.lock().unwrap() = relatorio;
 }
 
 /// Última linha de defesa: o app nem chegou a existir, então não há AppHandle

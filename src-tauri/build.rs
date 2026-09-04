@@ -53,6 +53,10 @@ fn main() {
             "note_set",
             "escolher_pasta",
             "save_media_em",
+            // 27: só o Painel (conteúdo local) cita este — ver
+            // capabilities/default.json. Ele apenas LÊ o resultado do registro
+            // dos atalhos globais; a página do WhatsApp Web não o tem.
+            "atalhos_estado",
             "open_settings",
             "open_log_dir",
             // B2: só o Painel o cita (capabilities/default.json). A página do

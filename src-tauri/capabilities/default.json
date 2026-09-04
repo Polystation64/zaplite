@@ -11,6 +11,7 @@
     "allow-save-settings",
     "allow-open-log-dir",
     "allow-diagnostico-texto",
+    "allow-atalhos-estado",
     "allow-list-chats",
     "allow-ai-status",
     "allow-ai-test",

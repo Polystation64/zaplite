@@ -189,6 +189,30 @@
       <button class="primary" id="qrAdd" style="margin-top:14px;background:transparent;color:var(--accent);border:1px solid var(--accent)">+ Novo atalho</button>
     </div>
 
+    <div class="plan-sep" id="hkSec">
+      <h2>ATALHO GLOBAL — SUAS COMBINAÇÕES</h2>
+      <p class="plan-hint">
+        Estes atalhos são registrados <b style="color:var(--txt)">no Windows</b>, então funcionam
+        mesmo com a janela do ZapLite escondida ou com outro programa em foco. Clique num campo e
+        aperte a combinação; ela precisa ter pelo menos um modificador
+        (<code>Ctrl</code>, <code>Alt</code>, <code>Shift</code>). Deixe vazio para desligar aquele
+        atalho. Só valem com o módulo <b style="color:var(--txt)">Atalho global</b> ligado na grade
+        acima — desligado, vale só o <code>Ctrl+Shift+W</code> de sempre.
+      </p>
+      <p class="plan-hint">
+        <b style="color:var(--txt)">Se outro programa já tiver tomado a combinação, o Windows recusa
+        o registro.</b> O ZapLite continua funcionando normalmente e a tabela abaixo diz qual falhou
+        e por quê — nunca uma tela em branco. Nenhuma destas ações abre conversa: abrir mandaria
+        recibo de leitura para quem escreveu.
+      </p>
+      <div id="hkLista" class="rows" style="max-width:760px"></div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap">
+        <button class="primary" id="hkConferir" style="background:transparent;color:var(--accent);border:1px solid var(--accent)">Conferir o registro de verdade</button>
+        <span class="plan-hint" style="margin:0">Depois de “Salvar e aplicar”: mostra o que o Windows aceitou.</span>
+      </div>
+      <div id="hkEstado" class="plan-hint" style="margin-top:12px;white-space:pre-wrap"></div>
+    </div>
+
     <div class="plan-sep" id="modPlanSec" hidden>
       <h2 id="modPlanTitulo">AINDA NÃO EXISTEM</h2>
       <p class="plan-hint">
@@ -860,10 +884,10 @@
     {id:"antiDelete",  n:4,  t:"Anti-apagadas", d:"Guarda e revela mensagens apagadas para todos.", tag:"warn"},
     {id:"bulkUnread",  n:5,  t:"Ações em massa", d:"Marcar como não lida, arquivar e marcar como lida em várias conversas de uma vez, <b>sem abrir nenhuma</b> — as ações saem do menu do botão direito da própria linha. Abrir conversa mandaria recibo de leitura para quem escreveu; por isso “marcar como lida”, que manda o recibo por si só, vem separada e com o aviso antes. Só alcança as conversas renderizadas na lista.", tag:"local"},
     {id:"noReadReceipt",n:6, t:"Ler sem confirmar", d:"Lê sem enviar confirmação de leitura.", tag:"warn"},
-    {id:"pinExtra",    n:7,  t:"Fixar sem limite", d:"Fixa mais conversas além do limite oficial (local).", tag:""},
+    {id:"pinExtra",    n:7,  t:"Fixar sem limite", d:"Uma faixa própria no topo da lista com as conversas que você fixou <b>além do limite do WhatsApp</b>. É uma segunda lista, <b>local e sem limite</b>, presa ao identificador da conversa (nome muda, id não) e guardada só nesta máquina — sobrevive a recarregar e a renavegar. <b>Não encosta na fixação do WhatsApp</b>: o ZapLite nunca clica em “Fixar conversa”, então os fixados de verdade continuam como estão. Abrir pela faixa só funciona se a linha estiver renderizada — a lista é virtualizada.", tag:"local"},
     {id:"contactNotes",n:8,  t:"Notas por contato", d:"Uma anotação privada por conversa, guardada <b>só nesta máquina</b> e presa ao identificador da conversa (nome muda, id não). Um bloquinho no cabeçalho da conversa aberta acende quando existe nota, e um ponto discreto marca as linhas da lista que têm uma. O caderno inteiro nunca atravessa para a página do WhatsApp: o ZapLite pede uma nota por vez ao lado nativo.", tag:"local"},
     {id:"reminders",   n:9,  t:"Lembretes", d:"“Responder o Fulano às 15h”, avisado pela mesma janela de notificação dos toasts — com o botão de fixar. <b>Só dispara com o ZapLite aberto</b>: o relógio é da página, não do Windows. Se a hora passar com o app fechado, o aviso aparece na próxima abertura, marcado como atrasado. O aviso não abre a conversa (abrir mandaria recibo de leitura); ele diz qual é.", tag:"local"},
-    {id:"advSearch",   n:10, t:"Busca avançada", d:"Filtra por data, remetente e tipo de mídia.", tag:""},
+    {id:"advSearch",   n:10, t:"Busca avançada", d:"Filtra por texto, remetente, data e tipo de mídia, na conversa aberta e na lista. <b>Limite estrutural, dito na tela</b>: a conversa e a lista são virtualizadas — só existe no DOM o que está renderizado, e o ZapLite não rola nada sozinho. <b>Isto não busca no histórico do WhatsApp.</b> O painel mostra quantas mensagens e quantas conversas foram realmente varridas, e quantas ficaram fora do filtro de data por não terem carimbo legível.", tag:"local"},
     {id:"transcribe",  n:11, t:"Transcrever áudio", d:"Whisper local converte áudios em texto, offline.", tag:"local"},
     {id:"summarize",   n:12, t:"Resumir conversa", d:"Resumo em tópicos das mensagens visíveis.", tag:"ia"},
     {id:"translate",   n:13, t:"Tradução sob demanda", d:"Traduz UMA mensagem recebida quando você pede: botão direito na mensagem, ou “Traduzir a última recebida” no menu do ZapLite. Idioma de destino configurável na aba IA. Não existe modo automático de propósito — traduzir tudo o que chega é uma chamada de IA por mensagem, paga, para textos que quase sempre já estão no seu idioma.", tag:"ia"},
@@ -871,8 +895,8 @@
     {id:"ocr",         n:15, t:"OCR de imagens", d:"Extrai o texto de um print ou foto que já está na conversa, sob demanda. Usa o “Modelo para imagem” configurado aqui na aba IA — apelido <code>auto/*</code> descarta a imagem, e nesse caso a chamada falha com a explicação em vez de responder errado.", tag:"ia"},
     {id:"scamDetect",  n:16, t:"Detector de golpes", d:"Pede a um modelo os sinais de golpe de UMA mensagem, quando você clica. O resultado é opinião de IA, não veredito: ele não abre o link nem conhece o remetente, e o painel diz isso em cima e embaixo da resposta.", tag:"ia"},
     {id:"dailyDigest", n:17, t:"Resumo do dia", d:"O que se moveu nas conversas carregadas na janela de tempo que você escolher, num painel. Sem abrir conversa nenhuma (abrir marcaria como lida e mandaria recibo de leitura): usa a prévia da lista, mais as mensagens visíveis da conversa aberta. Mostra o escopo e o texto exato ANTES de enviar; o envio é uma chamada só, no segundo clique.", tag:"ia"},
-    {id:"stickerMaker",n:18, t:"Criador de figurinhas", d:"Remove fundo, corta, texto e exporta webp.", tag:""},
-    {id:"imgToSticker",n:19, t:"Imagem → figurinha", d:"Vira figurinha qualquer imagem recebida.", tag:""},
+    {id:"stickerMaker",n:18, t:"Criador de figurinhas", d:"Recorta (zoom e posição), escreve texto e exporta <code>.webp</code> de figurinha — 512×512 com fundo transparente, feito no Canvas da própria página, sem dependência nativa. <b>“Remover fundo” aqui é remoção por COR (croma)</b>: você aponta a cor do fundo na prévia e escolhe a tolerância. Funciona em fundo liso e <b>não é recorte inteligente de objeto</b> — esse recurso não existe neste app.", tag:"local"},
+    {id:"imgToSticker",n:19, t:"Imagem → figurinha", d:"O caminho curto: botão direito numa imagem da conversa (ou a última, pelo menu do ZapLite) e ela vira <code>.webp</code> de figurinha 512×512 com fundo transparente, salvo pelo diálogo de “salvar como” do Windows. A imagem inteira cabe no quadrado, sem esticar nem cortar. Compartilha o desenho e o encoder com o Criador de figurinhas — o botão “Ajustar antes” abre lá com a mesma imagem.", tag:"local"},
     {id:"bulkDownload",n:20, t:"Download em massa", d:"Baixa de uma vez as mídias da conversa aberta, escolhendo a pasta <b>uma única vez</b> no diálogo do Windows, com progresso e um resumo no fim (quantas foram, quantas falharam e por quê). Limite honesto: só o que está <b>renderizado e já carregado</b> — a conversa é virtualizada e o ZapLite não a rola sozinho.", tag:"local"},
     {id:"audioSpeed",  n:21, t:"Velocidade de áudio", d:"Toca em 1x até 3x com um clique.", tag:""},
     {id:"videoCompress",n:22,t:"Compressor de vídeo", d:"Comprime antes de enviar, ou manda como documento.", tag:""},
@@ -880,7 +904,7 @@
     {id:"alwaysOnTop", n:24, t:"Sempre no topo", d:"Janela flutuante acima das outras.", tag:""},
     {id:"theme",       n:25, t:"Tema e acento", d:"Dark reforçado e cor personalizada.", tag:""},
     {id:"declutter",   n:26, t:"Esconder itens", d:"Some com Status, Canais e Comunidades.", tag:""},
-    {id:"globalHotkey",n:27, t:"Atalho global", d:"Ctrl+Shift+W mostra/esconde o app.", tag:""},
+    {id:"globalHotkey",n:27, t:"Atalho global", d:"Torna os atalhos <b>configuráveis</b>: esconder/mostrar o app, abrir o Painel e (opcional) abrir o formulário de novo lembrete — registrados no Windows, então funcionam com a janela escondida. <b>Nasce desligado</b> porque ligá-lo faz o ZapLite tomar combinações de tecla do sistema inteiro. Se outro programa já tiver tomado uma delas, o registro falha, o app segue normal e a tabela abaixo diz qual falhou e por quê. Nenhuma ação abre conversa (abrir mandaria recibo de leitura).", tag:"local"},
     {id:"multiAccount",n:28, t:"Multi-conta", d:"Contas pessoal e trabalho em abas.", tag:"warn"},
     {id:"privacyBlur", n:29, t:"Blur ao sair do foco", d:"Borra a tela quando o app perde o foco.", tag:""},
     {id:"exportChat",  n:30, t:"Exportar conversa", d:"Salva a conversa aberta em <code>.txt</code> ou <code>.json</code> pelo diálogo de “salvar como” do Windows, com progresso e “abrir a pasta” no fim. Limite honesto, dito na tela e escrito dentro do arquivo: sai <b>só o que está renderizado</b> — a lista é virtualizada e o ZapLite não a rola sozinho. O painel mostra o número real de mensagens capturadas antes de você salvar.", tag:"local"},
@@ -915,6 +939,14 @@
     // deles chama IA, nenhum manda byte para fora da maquina, e cinco dos
     // seis nao fazem nada ate um clique.
     "quickReplies","bulkUnread","contactNotes","reminders","bulkDownload","exportChat",
+    // ONDA 3 - os cinco que faltavam: `modulos/pin-extra.js`,
+    // `modulos/busca-avancada.js`, `modulos/atalho-global.js`,
+    // `modulos/figurinha-criar.js` e `modulos/figurinha-imagem.js`, cada um com
+    // o seu `reg({ id: ... })` e a sua chamada em `injection/src/main.js`. O
+    // `globalHotkey` tem tambem a metade nativa (`aplicar_atalhos`, em
+    // src-tauri/src/lib.rs): atalho global mora no sistema operacional, nao na
+    // pagina. Nenhum dos cinco chama IA e nenhum manda byte para fora.
+    "pinExtra","advSearch","globalHotkey","stickerMaker","imgToSticker",
   ]);
 
   const PALETTE = ["#22d3aa","#7c3aed","#0ea5e9","#f43f5e","#f59e0b","#10b981","#e879f9","#f8fafc"];
@@ -1035,6 +1067,110 @@
     renderQR();
     const campos = document.querySelectorAll("#qrLista .qr-atalho");
     if(campos.length) campos[campos.length-1].focus();
+  };
+
+  /* 27 - editor dos atalhos globais. Mora no Painel porque e aqui que existe
+     `save_settings`; quem REGISTRA e o Rust (`aplicar_atalhos`, em
+     src-tauri/src/lib.rs), chamado a cada gravacao. A pagina do WhatsApp nao
+     participa: tecla apertada com a janela escondida nunca chega a um
+     `keydown` de pagina nenhuma - era esse o defeito do Ctrl+Shift+Z antigo. */
+  const HOTKEYS = [
+    ["toggleWindow","Esconder / mostrar o ZapLite","ctrl+shift+w"],
+    ["openPanel","Abrir o Painel do ZapLite","ctrl+shift+z"],
+    ["newReminder","Novo lembrete (abre o formulario; nasce desligado)",""],
+  ];
+
+  /* PURA. Um KeyboardEvent vira a combinacao no formato que o Rust entende.
+     Devolve "" quando a tecla nao serve sozinha (so modificadores, ou tecla
+     que o `global-hotkey` nao nomeia). Exigir modificador nao e capricho:
+     registrar a letra "W" sozinha como atalho GLOBAL tiraria a tecla do
+     sistema inteiro. */
+  function comboDoEvento(e){
+    const cod = e.code || "";
+    let tecla = "";
+    if(/^Key[A-Z]$/.test(cod)) tecla = cod.slice(3).toLowerCase();
+    else if(/^Digit[0-9]$/.test(cod)) tecla = cod.slice(5);
+    else if(/^F([1-9]|1[0-9]|2[0-4])$/.test(cod)) tecla = cod.toLowerCase();
+    else if(cod==="Space") tecla="space";
+    else if(cod==="Enter") tecla="enter";
+    else if(cod==="Tab") tecla="tab";
+    else if(cod==="Backspace") tecla="backspace";
+    else if(cod==="Delete") tecla="delete";
+    else if(cod==="Insert") tecla="insert";
+    else if(cod==="Home") tecla="home";
+    else if(cod==="End") tecla="end";
+    else if(cod==="PageUp") tecla="pageup";
+    else if(cod==="PageDown") tecla="pagedown";
+    else if(cod==="ArrowUp") tecla="up";
+    else if(cod==="ArrowDown") tecla="down";
+    else if(cod==="ArrowLeft") tecla="left";
+    else if(cod==="ArrowRight") tecla="right";
+    if(!tecla) return "";
+    const mods=[];
+    if(e.ctrlKey) mods.push("ctrl");
+    if(e.altKey) mods.push("alt");
+    if(e.shiftKey) mods.push("shift");
+    if(e.metaKey) mods.push("super");
+    if(!mods.length) return "";
+    return mods.join("+")+"+"+tecla;
+  }
+
+  function hkObj(){
+    if(!S.hotkeys || typeof S.hotkeys!=="object") S.hotkeys = {};
+    HOTKEYS.forEach(function(h){
+      if(typeof S.hotkeys[h[0]] !== "string") S.hotkeys[h[0]] = h[2];
+    });
+    return S.hotkeys;
+  }
+
+  function renderHK(){
+    const box = document.getElementById("hkLista");
+    if(!box) return;
+    box.innerHTML="";
+    const cfg = hkObj();
+    HOTKEYS.forEach(function(h){
+      const f = document.createElement("div");
+      f.className = "rule";
+      f.innerHTML =
+        '<div class="head">' +
+          '<input class="match hk-combo" type="text" readonly spellcheck="false" placeholder="(desligado) clique e aperte a combinacao"/>' +
+          '<button class="del" title="Desligar este atalho">&#10005;</button>' +
+        '</div>' +
+        '<div class="opt"><label class="hk-rot"></label></div>';
+      const i = f.querySelector(".hk-combo");
+      i.value = cfg[h[0]] || "";
+      f.querySelector(".hk-rot").textContent = h[1];
+      i.addEventListener("keydown", function(ev){
+        ev.preventDefault();
+        const c = comboDoEvento(ev);
+        if(!c){
+          i.value = "";
+          f.querySelector(".hk-rot").textContent = h[1] + "  -  precisa de Ctrl, Alt ou Shift junto com a tecla";
+          cfg[h[0]] = "";
+          return;
+        }
+        i.value = c;
+        cfg[h[0]] = c;
+        f.querySelector(".hk-rot").textContent = h[1];
+      });
+      f.querySelector(".del").onclick = function(){ cfg[h[0]]=""; renderHK(); };
+      box.appendChild(f);
+    });
+  }
+
+  document.getElementById("hkConferir").onclick = async function(){
+    const alvo = document.getElementById("hkEstado");
+    alvo.textContent = "perguntando ao Windows...";
+    try{
+      const r = (await invoke("atalhos_estado"))||[];
+      if(!r.length){ alvo.textContent = "Nenhum registro ainda. Clique em “Salvar e aplicar” primeiro."; return; }
+      alvo.textContent = r.map(function(x){
+        return (x.ok ? "ok     " : "FALHOU ") + (x.combo || "(vazio)") + "   " + x.rotulo +
+               (x.ok ? "" : "
+         motivo: " + (x.erro||"?"));
+      }).join("
+");
+    }catch(e){ alvo.textContent = "nao deu para ler o estado dos atalhos: " + (e&&e.message||e); }
   };
 
   function renderCustom(){
@@ -1858,8 +1994,10 @@
       nsfwBlur:false,autoTranscribe:false,
       translate:true,ocr:true,scamDetect:true,dailyDigest:true,
       contactNotes:true,quickReplies:true,reminders:true,
-      bulkUnread:true,exportChat:true,bulkDownload:true}, S.modules||{});
-    renderMods(); renderQR(); renderRules(); renderCustom(); renderIA();
+      bulkUnread:true,exportChat:true,bulkDownload:true,
+      pinExtra:true,advSearch:true,stickerMaker:true,imgToSticker:true,
+      globalHotkey:false}, S.modules||{});
+    renderMods(); renderQR(); renderHK(); renderRules(); renderCustom(); renderIA();
     wRefresh();
     renderMention(); carregarChats();
     document.getElementById("status").textContent="pronto";

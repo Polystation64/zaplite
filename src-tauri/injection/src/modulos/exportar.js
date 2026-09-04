@@ -39,7 +39,7 @@ export function linhaDeExportacao(msg) {
   return carimbo + quem + (msg.texto || "");
 }
 
-function tipoDeMidia(bolha) {
+export function tipoDeMidia(bolha) {
   try {
     if (imagemDaBolha(bolha)) return "imagem";
     if (bolha.querySelector("video")) return "vídeo";
@@ -49,26 +49,37 @@ function tipoDeMidia(bolha) {
   return "";
 }
 
+/** UMA bolha lida como registro de mensagem, ou null quando não há nada
+    exibível nela. Mora aqui porque foi aqui que nasceu; a BUSCA AVANÇADA (10)
+    chama esta mesma função e guarda o elemento ao lado do registro — sem isso
+    ela precisaria de uma segunda leitura de bolha, e duas leituras divergem no
+    primeiro cisma do WhatsApp (ver V1 em bolhas.js). O elemento NÃO entra no
+    registro: ele acabaria no .json exportado. */
+export function dadosDaBolha(bolha) {
+  const pre = bolha.querySelector("[data-pre-plain-text]");
+  const meta = analisarPrePlainText(pre && pre.getAttribute("data-pre-plain-text"));
+  let texto = (textoDaBolha(bolha) || "").trim();
+  const midia = tipoDeMidia(bolha);
+  if (!texto && midia) texto = "<" + midia + ">";
+  if (!texto && ehApagada(bolha)) texto = "<mensagem apagada>";
+  if (!texto) return null;
+  return {
+    id: idDaBolha(bolha),
+    hora: meta.hora,
+    data: meta.data,
+    autor: meta.autor || (ehDeSaida(bolha) ? "Você" : ""),
+    saida: ehDeSaida(bolha),
+    midia,
+    texto,
+  };
+}
+
 /** As mensagens renderizadas da conversa aberta, em ordem de tela. */
 export function coletarMensagens() {
   const out = [];
   for (const bolha of bolhasVisiveis()) {
-    const pre = bolha.querySelector("[data-pre-plain-text]");
-    const meta = analisarPrePlainText(pre && pre.getAttribute("data-pre-plain-text"));
-    let texto = (textoDaBolha(bolha) || "").trim();
-    const midia = tipoDeMidia(bolha);
-    if (!texto && midia) texto = "<" + midia + ">";
-    if (!texto && ehApagada(bolha)) texto = "<mensagem apagada>";
-    if (!texto) continue;
-    out.push({
-      id: idDaBolha(bolha),
-      hora: meta.hora,
-      data: meta.data,
-      autor: meta.autor || (ehDeSaida(bolha) ? "Você" : ""),
-      saida: ehDeSaida(bolha),
-      midia,
-      texto,
-    });
+    const d = dadosDaBolha(bolha);
+    if (d) out.push(d);
   }
   return out;
 }

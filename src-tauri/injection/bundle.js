@@ -569,7 +569,22 @@
     reminders: true,
     bulkUnread: true,
     exportChat: true,
-    bulkDownload: true
+    bulkDownload: true,
+    // ONDA 3 — quatro nascem LIGADOS pela mesma razão dos anteriores: ligado,
+    // cada um acrescenta uma entrada no dock e nada mais. `pinExtra` é o único
+    // com efeito contínuo, e o efeito é o mesmo das notas — um temporizador de
+    // 1,5 s que remonta a faixa; sem nada fixado ele nem desenha a faixa.
+    pinExtra: true,
+    advSearch: true,
+    stickerMaker: true,
+    imgToSticker: true,
+    // `globalHotkey` nasce DESLIGADO, e aqui o argumento é diferente dos outros:
+    // ligá-lo faz o ZapLite TOMAR combinações de tecla do sistema inteiro
+    // (Ctrl+Shift+Z passa a ser global, e o usuário pode acrescentar uma
+    // terceira). Isso é uma decisão sobre a máquina dele, não sobre este app —
+    // então é dele. Desligado, o comportamento é exatamente o de sempre: só o
+    // Ctrl+Shift+W esconde/mostra.
+    globalHotkey: false
   };
   async function applyAll() {
     try {
@@ -3174,6 +3189,481 @@
     });
   }
 
+  // src-tauri/injection/src/figurinha.js
+  var LADO = 512;
+  var TETO_BYTES = 500 * 1024;
+  var QUALIDADES = [0.92, 0.8, 0.65, 0.5, 0.35];
+  function carregarImagem(src) {
+    return new Promise((resolve, reject) => {
+      if (!src) return reject(new Error("nenhuma imagem para carregar."));
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("a p\xE1gina n\xE3o entregou os bytes desta imagem (ela pode n\xE3o ter carregado ainda)."));
+      img.src = src;
+    });
+  }
+  function carregarDeArquivo(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) return reject(new Error("nenhum arquivo escolhido."));
+      if (String(file.type || "").indexOf("image/") !== 0) {
+        return reject(new Error("\u201C" + file.name + "\u201D n\xE3o \xE9 uma imagem."));
+      }
+      const fr = new FileReader();
+      fr.onload = () => carregarImagem(fr.result).then(resolve, reject);
+      fr.onerror = () => reject(new Error("n\xE3o deu para ler \u201C" + file.name + "\u201D do disco."));
+      fr.readAsDataURL(file);
+    });
+  }
+  function enquadrar(larguraImg, alturaImg, zoom, dx, dy, lado) {
+    const L = lado || LADO;
+    if (!(larguraImg > 0) || !(alturaImg > 0)) return { x: 0, y: 0, w: 0, h: 0 };
+    const z = Math.max(0.1, Math.min(8, zoom || 1));
+    const base = Math.min(L / larguraImg, L / alturaImg);
+    const w = larguraImg * base * z;
+    const h = alturaImg * base * z;
+    return {
+      x: (L - w) / 2 + (dx || 0) * (L / 2),
+      y: (L - h) / 2 + (dy || 0) * (L / 2),
+      w,
+      h
+    };
+  }
+  function distanciaCor(r1, g1, b1, r2, g2, b2) {
+    const dr = r1 - r2;
+    const dg = g1 - g2;
+    const db = b1 - b2;
+    return dr * dr + dg * dg + db * db;
+  }
+  function removerCroma(ctx, alvo, tolerancia, lado) {
+    const L = lado || LADO;
+    const t = Math.max(0, Math.min(100, tolerancia || 0));
+    const raio = t / 100 * 255;
+    const limite = raio * raio * 3;
+    const dados = ctx.getImageData(0, 0, L, L);
+    const px = dados.data;
+    let apagados = 0;
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3] === 0) continue;
+      if (distanciaCor(px[i], px[i + 1], px[i + 2], alvo.r, alvo.g, alvo.b) <= limite) {
+        px[i + 3] = 0;
+        apagados++;
+      }
+    }
+    ctx.putImageData(dados, 0, 0);
+    return apagados;
+  }
+  function escreverLinha(ctx, texto, y, lado) {
+    const L = lado || LADO;
+    const t = String(texto || "").trim();
+    if (!t) return;
+    let tam = Math.round(L * 0.13);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (; tam > 10; tam -= 2) {
+      ctx.font = "800 " + tam + "px Impact, 'Arial Black', system-ui, sans-serif";
+      if (ctx.measureText(t).width <= L * 0.92) break;
+    }
+    ctx.lineJoin = "round";
+    ctx.miterLimit = 2;
+    ctx.lineWidth = Math.max(3, Math.round(tam * 0.18));
+    ctx.strokeStyle = "#000";
+    ctx.strokeText(t, L / 2, y);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(t, L / 2, y);
+  }
+  function desenharFigurinha(img, op, canvasAlvo) {
+    const o = op || {};
+    const cv = canvasAlvo || document.createElement("canvas");
+    cv.width = LADO;
+    cv.height = LADO;
+    const ctx = cv.getContext("2d", { willReadFrequently: true });
+    ctx.clearRect(0, 0, LADO, LADO);
+    if (img) {
+      const q = enquadrar(img.naturalWidth || img.width, img.naturalHeight || img.height, o.zoom, o.dx, o.dy);
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, q.x, q.y, q.w, q.h);
+    }
+    if (o.croma) removerCroma(ctx, o.croma, o.croma.tolerancia);
+    if (o.textoTopo) escreverLinha(ctx, o.textoTopo, Math.round(LADO * 0.11));
+    if (o.textoBase) escreverLinha(ctx, o.textoBase, Math.round(LADO * 0.89));
+    return cv;
+  }
+  function corDoPixel(canvas, x, y) {
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const d = ctx.getImageData(Math.max(0, Math.min(LADO - 1, x | 0)), Math.max(0, Math.min(LADO - 1, y | 0)), 1, 1).data;
+    return { r: d[0], g: d[1], b: d[2], a: d[3] };
+  }
+  function paraWebp(canvas) {
+    const tentar = (i) => new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (b) => {
+          if (!b) return reject(new Error("esta webview n\xE3o gerou o WebP da figurinha."));
+          if (String(b.type || "").indexOf("image/webp") !== 0) {
+            return reject(
+              new Error(
+                "esta webview n\xE3o sabe gravar WebP (devolveu \u201C" + (b.type || "?") + "\u201D). A figurinha do WhatsApp precisa ser WebP, e um arquivo de outro formato com o nome trocado n\xE3o funcionaria."
+              )
+            );
+          }
+          if (b.size <= TETO_BYTES || i >= QUALIDADES.length - 1) return resolve(b);
+          resolve(tentar(i + 1));
+        },
+        "image/webp",
+        QUALIDADES[i]
+      );
+    });
+    return tentar(0);
+  }
+
+  // src-tauri/injection/src/modulos/figurinha-criar.js
+  var ID_ACT = "zl-fig";
+  var CSS_KEY = "zl-fig-style";
+  var CSS_FIGURINHA = `
+  .zl-fig-cv{width:214px;height:214px;display:block;margin:0 auto;border-radius:10px;cursor:crosshair;
+    border:1px solid rgba(255,255,255,.14);
+    background-color:#0b141a;
+    background-image:linear-gradient(45deg,#243138 25%,transparent 25%),
+      linear-gradient(-45deg,#243138 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#243138 75%),
+      linear-gradient(-45deg,transparent 75%,#243138 75%);
+    background-size:16px 16px;
+    background-position:0 0,0 8px,8px -8px,-8px 0}
+  .zl-fig-lin{display:flex;align-items:center;gap:8px;font-size:12px}
+  .zl-fig-lin > span:first-child{flex:0 0 74px;color:#8696a0}
+  .zl-fig-lin input[type=range]{flex:1;accent-color:var(--zl-accent,#22d3aa);min-width:0}
+  .zl-fig-cor{width:22px;height:22px;border-radius:6px;border:1px solid rgba(255,255,255,.25);flex:0 0 auto}
+  .zl-fig-arq{font-size:11.5px;color:#8696a0}
+  .zl-fig-arq input[type=file]{display:block;margin-top:4px;font-size:11px;max-width:100%}
+  .zl-fig-b{background:rgba(255,255,255,.09);border:none;color:#e9edef;cursor:pointer;
+    font-size:11.5px;padding:5px 9px;border-radius:7px;font-family:inherit}
+  .zl-fig-b:hover{background:rgba(255,255,255,.16)}
+`;
+  var AVISO_CROMA = "\u201CRemover fundo\u201D aqui \xE9 REMO\xC7\xC3O POR COR, n\xE3o recorte inteligente: o ZapLite apaga os pixels parecidos com a cor que voc\xEA apontar na pr\xE9via. Funciona em fundo liso (print, fundo branco, est\xFAdio) e n\xE3o funciona em foto de rua \u2014 n\xE3o existe detec\xE7\xE3o de objeto neste app, e n\xE3o vamos fingir que existe.";
+  var est = {
+    img: null,
+    origem: "",
+    zoom: 1,
+    dx: 0,
+    dy: 0,
+    croma: false,
+    cor: { r: 255, g: 255, b: 255 },
+    tolerancia: 18,
+    textoTopo: "",
+    textoBase: ""
+  };
+  function opcoes() {
+    return {
+      zoom: est.zoom,
+      dx: est.dx,
+      dy: est.dy,
+      croma: est.croma ? { r: est.cor.r, g: est.cor.g, b: est.cor.b, tolerancia: est.tolerancia } : null,
+      textoTopo: est.textoTopo,
+      textoBase: est.textoBase
+    };
+  }
+  function ultimaImagemDaConversa() {
+    const b = ultimaBolha((x) => !!imagemDaBolha(x));
+    return b ? imagemDaBolha(b) : null;
+  }
+  function nomeCurto(s) {
+    const t = String(s || "").trim();
+    return t.length > 34 ? t.slice(0, 33) + "\u2026" : t;
+  }
+  function montarFormulario(aoMudarOrigem) {
+    const form = document.createElement("div");
+    form.className = "zl-form";
+    const cv = document.createElement("canvas");
+    cv.className = "zl-fig-cv";
+    cv.width = LADO;
+    cv.height = LADO;
+    const situacao = document.createElement("div");
+    situacao.className = "zl-lim";
+    function redesenhar() {
+      desenharFigurinha(est.img, opcoes(), cv);
+      situacao.textContent = est.img ? "Origem: " + est.origem + " \xB7 " + (est.img.naturalWidth || 0) + "\xD7" + (est.img.naturalHeight || 0) + " px \u2192 sai 512\xD7512 com fundo transparente." : "Nenhuma imagem carregada ainda. Use um dos dois bot\xF5es abaixo.";
+    }
+    cv.onclick = (e) => {
+      if (!est.img) return;
+      const r = cv.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width * LADO;
+      const y = (e.clientY - r.top) / r.height * LADO;
+      const limpo = desenharFigurinha(est.img, Object.assign(opcoes(), { croma: null }));
+      const c = corDoPixel(limpo, x, y);
+      if (!c.a) return;
+      est.cor = { r: c.r, g: c.g, b: c.b };
+      est.croma = true;
+      sincronizar();
+      redesenhar();
+    };
+    const origem = document.createElement("div");
+    origem.className = "zl-fig-arq";
+    const bConversa = document.createElement("button");
+    bConversa.className = "zl-fig-b";
+    bConversa.type = "button";
+    bConversa.textContent = "Usar a \xFAltima imagem da conversa";
+    bConversa.onclick = async () => {
+      const img = ultimaImagemDaConversa();
+      if (!img) {
+        return showPanel(
+          "Criador de figurinhas",
+          "Nenhuma imagem renderizada na conversa aberta. A conversa \xE9 virtualizada: role at\xE9 a imagem e deixe-a carregar, ou escolha um arquivo do disco."
+        );
+      }
+      try {
+        est.img = await carregarImagem(img.src);
+        est.origem = "imagem da conversa";
+        aoMudarOrigem();
+      } catch (e) {
+        showPanel("N\xE3o deu para usar essa imagem", e.message);
+      }
+    };
+    const arq = document.createElement("input");
+    arq.type = "file";
+    arq.accept = "image/*";
+    arq.onchange = async () => {
+      const f = arq.files && arq.files[0];
+      if (!f) return;
+      try {
+        est.img = await carregarDeArquivo(f);
+        est.origem = "arquivo " + nomeCurto(f.name);
+        aoMudarOrigem();
+      } catch (e) {
+        showPanel("N\xE3o deu para abrir a imagem", e.message);
+      }
+    };
+    origem.appendChild(bConversa);
+    origem.appendChild(arq);
+    function faixa(rotulo, min, max, passo, valor, aoMudar) {
+      const l = document.createElement("div");
+      l.className = "zl-fig-lin";
+      const t = document.createElement("span");
+      t.textContent = rotulo;
+      const i = document.createElement("input");
+      i.type = "range";
+      i.min = String(min);
+      i.max = String(max);
+      i.step = String(passo);
+      i.value = String(valor);
+      const v = document.createElement("span");
+      v.style.cssText = "flex:0 0 40px;text-align:right;color:#8696a0";
+      const pintar3 = () => v.textContent = i.value;
+      i.oninput = () => {
+        aoMudar(parseFloat(i.value));
+        pintar3();
+        redesenhar();
+      };
+      pintar3();
+      l.appendChild(t);
+      l.appendChild(i);
+      l.appendChild(v);
+      return { l, i };
+    }
+    const fZoom = faixa("zoom", 0.5, 4, 0.05, est.zoom, (v) => est.zoom = v);
+    const fX = faixa("mover \u2194", -1, 1, 0.02, est.dx, (v) => est.dx = v);
+    const fY = faixa("mover \u2195", -1, 1, 0.02, est.dy, (v) => est.dy = v);
+    function campo(rotulo, valor, aoMudar) {
+      const l = document.createElement("div");
+      l.className = "zl-fig-lin";
+      const t = document.createElement("span");
+      t.textContent = rotulo;
+      const i = document.createElement("input");
+      i.type = "text";
+      i.value = valor;
+      i.spellcheck = false;
+      i.oninput = () => {
+        aoMudar(i.value);
+        redesenhar();
+      };
+      l.appendChild(t);
+      l.appendChild(i);
+      return l;
+    }
+    const cTopo = campo("texto topo", est.textoTopo, (v) => est.textoTopo = v);
+    const cBase = campo("texto baixo", est.textoBase, (v) => est.textoBase = v);
+    const linhaCroma = document.createElement("label");
+    const chk = document.createElement("input");
+    chk.type = "checkbox";
+    chk.checked = est.croma;
+    chk.onchange = () => {
+      est.croma = chk.checked;
+      redesenhar();
+    };
+    const amostra = document.createElement("span");
+    amostra.className = "zl-fig-cor";
+    linhaCroma.appendChild(chk);
+    linhaCroma.appendChild(
+      document.createTextNode("remover fundo pela cor (clique na pr\xE9via para escolher a cor) ")
+    );
+    linhaCroma.appendChild(amostra);
+    const fTol = faixa("toler\xE2ncia", 0, 60, 1, est.tolerancia, (v) => est.tolerancia = v);
+    const nota = document.createElement("div");
+    nota.className = "zl-lim";
+    nota.textContent = AVISO_CROMA;
+    function sincronizar() {
+      chk.checked = est.croma;
+      amostra.style.background = "rgb(" + est.cor.r + "," + est.cor.g + "," + est.cor.b + ")";
+      fZoom.i.value = String(est.zoom);
+      fX.i.value = String(est.dx);
+      fY.i.value = String(est.dy);
+      fTol.i.value = String(est.tolerancia);
+    }
+    form.appendChild(cv);
+    form.appendChild(situacao);
+    form.appendChild(origem);
+    form.appendChild(fZoom.l);
+    form.appendChild(fX.l);
+    form.appendChild(fY.l);
+    form.appendChild(cTopo);
+    form.appendChild(cBase);
+    form.appendChild(linhaCroma);
+    form.appendChild(fTol.l);
+    form.appendChild(nota);
+    sincronizar();
+    redesenhar();
+    return { form, redesenhar, sincronizar };
+  }
+  async function salvarComoFigurinha(img, op, prefixo) {
+    const cv = desenharFigurinha(img, op || {});
+    const blob = await paraWebp(cv);
+    const caminho = await salvarArquivo(blob, prefixo || "zaplite-figurinha");
+    return { caminho, bytes: blob.size, cv };
+  }
+  async function abrirCriador(imgInicial, rotuloOrigem) {
+    if (imgInicial) {
+      try {
+        est.img = await carregarImagem(imgInicial.src || imgInicial);
+        est.origem = rotuloOrigem || "imagem da conversa";
+      } catch (e) {
+        return showPanel("N\xE3o deu para abrir a imagem", e.message);
+      }
+    }
+    let ui = null;
+    const desenhar = () => {
+      if (ui) ui.redesenhar();
+    };
+    ui = montarFormulario(desenhar);
+    return showPanel("Criador de figurinhas", ui.form, [
+      [
+        "Salvar .webp",
+        async () => {
+          if (!est.img) {
+            return showPanel(
+              "Criador de figurinhas",
+              "Carregue uma imagem primeiro \u2014 pelo bot\xE3o \u201CUsar a \xFAltima imagem da conversa\u201D ou escolhendo um arquivo do disco."
+            );
+          }
+          try {
+            const r = await salvarComoFigurinha(est.img, opcoes(), "zaplite-figurinha");
+            if (!r.caminho) return;
+            if (r.bytes > TETO_BYTES) {
+              showPanel(
+                "Figurinha salva, mas grande",
+                "O arquivo ficou com " + Math.round(r.bytes / 1024) + " KB, acima do teto pr\xE1tico de " + Math.round(TETO_BYTES / 1024) + " KB. Ele est\xE1 no disco em 512\xD7512, mas o WhatsApp pode recus\xE1-lo como figurinha. Diminua o texto ou o zoom e salve de novo."
+              );
+            }
+          } catch (e) {
+            showPanel("N\xE3o deu para gerar a figurinha", e && e.message || String(e));
+          }
+        }
+      ],
+      [
+        "Recome\xE7ar",
+        () => {
+          est.zoom = 1;
+          est.dx = 0;
+          est.dy = 0;
+          est.croma = false;
+          est.tolerancia = 18;
+          est.textoTopo = "";
+          est.textoBase = "";
+          abrirCriador(null, est.origem);
+        }
+      ]
+    ]);
+  }
+  function registrarFigurinhaCriar() {
+    reg({
+      id: "stickerMaker",
+      label: "Criador de figurinhas",
+      apply() {
+        css(CSS_FIGURINHA, CSS_KEY);
+        addAct(ensureDock(), ID_ACT, "\u{1F3A8}", "Criador de figurinhas", "", () => abrirCriador());
+      },
+      revert() {
+        dropAct(ID_ACT);
+        dropCss(CSS_KEY);
+      }
+    });
+  }
+
+  // src-tauri/injection/src/modulos/figurinha-imagem.js
+  var ID_ACT2 = "zl-fig-img";
+  var CSS_KEY2 = "zl-fig-img-style";
+  async function figurinhaDaImagem(img, rotulo) {
+    let carregada;
+    try {
+      carregada = await carregarImagem(img && (img.src || img));
+    } catch (e) {
+      return showPanel("N\xE3o deu para usar essa imagem", e && e.message || String(e));
+    }
+    const cv = desenharFigurinha(carregada, {});
+    let blob;
+    try {
+      blob = await paraWebp(cv);
+    } catch (e) {
+      return showPanel("N\xE3o deu para gerar a figurinha", e && e.message || String(e));
+    }
+    const form = document.createElement("div");
+    form.className = "zl-form";
+    const prev = document.createElement("canvas");
+    prev.className = "zl-fig-cv";
+    prev.width = LADO;
+    prev.height = LADO;
+    prev.getContext("2d").drawImage(cv, 0, 0);
+    prev.style.cursor = "default";
+    const info = document.createElement("div");
+    info.className = "zl-lim";
+    info.textContent = "Origem: " + (rotulo || "imagem da conversa") + " (" + (carregada.naturalWidth || 0) + "\xD7" + (carregada.naturalHeight || 0) + " px).\nSa\xEDda: WebP 512\xD7512 com fundo transparente, " + Math.round(blob.size / 1024) + " KB" + (blob.size > TETO_BYTES ? " \u2014 acima do teto pr\xE1tico de " + Math.round(TETO_BYTES / 1024) + " KB, o WhatsApp pode recus\xE1-la como figurinha." : ".") + "\nA imagem inteira cabe no quadrado; o que sobra fica transparente, sem esticar nem cortar. Nada \xE9 enviado: o bot\xE3o abaixo abre o \u201Csalvar como\u201D do Windows.";
+    info.style.whiteSpace = "pre-wrap";
+    form.appendChild(prev);
+    form.appendChild(info);
+    return showPanel("Imagem \u2192 figurinha", form, [
+      ["Salvar .webp", () => salvarArquivo(blob, "zaplite-figurinha").catch((e) => showPanel("Erro", e.message))],
+      ["Ajustar antes (criador)", () => abrirCriador(carregada, rotulo || "imagem da conversa")]
+    ]);
+  }
+  function abrirPeloDock() {
+    const img = ultimaImagemDaConversa();
+    if (!img) {
+      return showPanel(
+        "Imagem \u2192 figurinha",
+        "Nenhuma imagem renderizada na conversa aberta. A conversa \xE9 virtualizada e o ZapLite n\xE3o a rola sozinho: role at\xE9 a imagem e deixe-a carregar. Pelo menu do bot\xE3o direito voc\xEA escolhe QUAL imagem virar figurinha."
+      );
+    }
+    return figurinhaDaImagem(img, "\xFAltima imagem da conversa");
+  }
+  function itemDeMenuFigurinha(bolha) {
+    if (!on("imgToSticker")) return null;
+    const img = imagemDaBolha(bolha);
+    if (!img) return null;
+    return ["\u{1F9E9}", "Transformar em figurinha", () => figurinhaDaImagem(img, "esta imagem")];
+  }
+  function registrarFigurinhaImagem() {
+    reg({
+      id: "imgToSticker",
+      label: "Imagem \u2192 figurinha",
+      apply() {
+        css(CSS_FIGURINHA, CSS_KEY2);
+        addAct(ensureDock(), ID_ACT2, "\u{1F9E9}", "\xDAltima imagem \u2192 figurinha", "", abrirPeloDock);
+      },
+      revert() {
+        dropAct(ID_ACT2);
+        dropCss(CSS_KEY2);
+      }
+    });
+  }
+
   // src-tauri/injection/src/modulos/ocr.js
   var SISTEMA2 = "Voc\xEA transcreve todo o texto vis\xEDvel de uma imagem, preservando a ordem e as quebras de linha. Responda s\xF3 com o texto, sem coment\xE1rios. Se n\xE3o houver texto nenhum, responda exatamente: (sem texto na imagem)";
   async function textoDaImagem(img) {
@@ -3387,6 +3877,8 @@
                 guarded(() => ocrDaBolha(bolha), "Texto da imagem")
               ]);
             }
+            const fig = itemDeMenuFigurinha(bolha);
+            if (fig) itens.push(fig);
             itens.push([
               "\u{1F4BE}",
               "Salvar imagem\u2026",
@@ -3596,7 +4088,7 @@
   }
 
   // src-tauri/injection/src/modulos/notas.js
-  var ID_ACT = "zl-nota";
+  var ID_ACT3 = "zl-nota";
   var timer = null;
   var idsComNota = [];
   async function recarregarIds() {
@@ -3722,13 +4214,13 @@
       id: "contactNotes",
       label: "Notas por contato",
       apply() {
-        addAct(ensureDock(), ID_ACT, "\u{1F4DD}", "Nota desta conversa", "", abrirEditor);
+        addAct(ensureDock(), ID_ACT3, "\u{1F4DD}", "Nota desta conversa", "", abrirEditor);
         if (timer) return;
         recarregarIds().then(pintar);
         timer = setInterval(pintar, 1500);
       },
       revert() {
-        dropAct(ID_ACT);
+        dropAct(ID_ACT3);
         if (timer) {
           clearInterval(timer);
           timer = null;
@@ -3739,7 +4231,7 @@
   }
 
   // src-tauri/injection/src/modulos/respostas-rapidas.js
-  var ID_ACT2 = "zl-qr";
+  var ID_ACT4 = "zl-qr";
   function atalhosCadastrados() {
     const bruto = settings && settings.quickReplies;
     if (!Array.isArray(bruto)) return [];
@@ -3842,14 +4334,14 @@
       id: "quickReplies",
       label: "Respostas r\xE1pidas",
       apply() {
-        addAct(ensureDock(), ID_ACT2, "\u26A1", "Respostas r\xE1pidas", "", listar);
+        addAct(ensureDock(), ID_ACT4, "\u26A1", "Respostas r\xE1pidas", "", listar);
         if (ouvindo) return;
         ouvindo = true;
         document.addEventListener("keydown", aoDigitar, true);
         document.addEventListener("input", aoDigitar, true);
       },
       revert() {
-        dropAct(ID_ACT2);
+        dropAct(ID_ACT4);
         if (!ouvindo) return;
         ouvindo = false;
         document.removeEventListener("keydown", aoDigitar, true);
@@ -3859,7 +4351,7 @@
   }
 
   // src-tauri/injection/src/modulos/lembretes.js
-  var ID_ACT3 = "zl-lembretes";
+  var ID_ACT5 = "zl-lembretes";
   var PASSO_MS = 2e4;
   var pendentes = [];
   var timer2 = null;
@@ -4027,14 +4519,14 @@
       id: "reminders",
       label: "Lembretes",
       apply() {
-        addAct(ensureDock(), ID_ACT3, "\u23F0", "Lembretes", "", abrir);
+        addAct(ensureDock(), ID_ACT5, "\u23F0", "Lembretes", "", abrir);
         carregar();
         if (timer2) return;
         timer2 = setInterval(conferir, PASSO_MS);
         setTimeout(conferir, 4e3);
       },
       revert() {
-        dropAct(ID_ACT3);
+        dropAct(ID_ACT5);
         if (timer2) {
           clearInterval(timer2);
           timer2 = null;
@@ -4044,7 +4536,7 @@
   }
 
   // src-tauri/injection/src/modulos/acoes-massa.js
-  var ID_ACT4 = "zl-massa";
+  var ID_ACT6 = "zl-massa";
   var ACOES = [
     {
       chave: "naolida",
@@ -4238,16 +4730,16 @@
       id: "bulkUnread",
       label: "A\xE7\xF5es em massa",
       apply() {
-        addAct(ensureDock(), ID_ACT4, "\u2611", "A\xE7\xF5es em massa", "", abrir2);
+        addAct(ensureDock(), ID_ACT6, "\u2611", "A\xE7\xF5es em massa", "", abrir2);
       },
       revert() {
-        dropAct(ID_ACT4);
+        dropAct(ID_ACT6);
       }
     });
   }
 
   // src-tauri/injection/src/modulos/exportar.js
-  var ID_ACT5 = "zl-exportar";
+  var ID_ACT7 = "zl-exportar";
   function analisarPrePlainText(pre) {
     const s = String(pre || "").trim();
     const m = s.match(/^\[([^\],]+),\s*([^\]]+)\]\s*(.*?):\s*$/);
@@ -4269,25 +4761,29 @@
     }
     return "";
   }
+  function dadosDaBolha(bolha) {
+    const pre = bolha.querySelector("[data-pre-plain-text]");
+    const meta = analisarPrePlainText(pre && pre.getAttribute("data-pre-plain-text"));
+    let texto = (textoDaBolha(bolha) || "").trim();
+    const midia = tipoDeMidia(bolha);
+    if (!texto && midia) texto = "<" + midia + ">";
+    if (!texto && ehApagada(bolha)) texto = "<mensagem apagada>";
+    if (!texto) return null;
+    return {
+      id: idDaBolha(bolha),
+      hora: meta.hora,
+      data: meta.data,
+      autor: meta.autor || (ehDeSaida(bolha) ? "Voc\xEA" : ""),
+      saida: ehDeSaida(bolha),
+      midia,
+      texto
+    };
+  }
   function coletarMensagens() {
     const out = [];
     for (const bolha of bolhasVisiveis()) {
-      const pre = bolha.querySelector("[data-pre-plain-text]");
-      const meta = analisarPrePlainText(pre && pre.getAttribute("data-pre-plain-text"));
-      let texto = (textoDaBolha(bolha) || "").trim();
-      const midia = tipoDeMidia(bolha);
-      if (!texto && midia) texto = "<" + midia + ">";
-      if (!texto && ehApagada(bolha)) texto = "<mensagem apagada>";
-      if (!texto) continue;
-      out.push({
-        id: idDaBolha(bolha),
-        hora: meta.hora,
-        data: meta.data,
-        autor: meta.autor || (ehDeSaida(bolha) ? "Voc\xEA" : ""),
-        saida: ehDeSaida(bolha),
-        midia,
-        texto
-      });
+      const d = dadosDaBolha(bolha);
+      if (d) out.push(d);
     }
     return out;
   }
@@ -4354,16 +4850,16 @@
       id: "exportChat",
       label: "Exportar conversa",
       apply() {
-        addAct(ensureDock(), ID_ACT5, "\u2B73", "Exportar conversa", "", abrir3);
+        addAct(ensureDock(), ID_ACT7, "\u2B73", "Exportar conversa", "", abrir3);
       },
       revert() {
-        dropAct(ID_ACT5);
+        dropAct(ID_ACT7);
       }
     });
   }
 
   // src-tauri/injection/src/modulos/baixar-massa.js
-  var ID_ACT6 = "zl-baixar";
+  var ID_ACT8 = "zl-baixar";
   var PAUSA_MS = 120;
   var AVISO2 = "S\xF3 as m\xEDdias RENDERIZADAS e J\xC1 CARREGADAS. A conversa \xE9 virtualizada (o ZapLite n\xE3o a rola sozinho) e uma m\xEDdia que ainda n\xE3o foi aberta na tela n\xE3o tem arquivo para ler \u2014 role at\xE9 onde quiser e deixe as miniaturas carregarem antes de baixar. Nada sai da m\xE1quina: os arquivos v\xE3o direto para a pasta que voc\xEA escolher.";
   var EXT_POR_MIME2 = {
@@ -4508,10 +5004,585 @@
       id: "bulkDownload",
       label: "Download em massa",
       apply() {
-        addAct(ensureDock(), ID_ACT6, "\u2913", "Baixar m\xEDdias da conversa", "", abrir4);
+        addAct(ensureDock(), ID_ACT8, "\u2913", "Baixar m\xEDdias da conversa", "", abrir4);
       },
       revert() {
-        dropAct(ID_ACT6);
+        dropAct(ID_ACT8);
+      }
+    });
+  }
+
+  // src-tauri/injection/src/modulos/pin-extra.js
+  var ID_ACT9 = "zl-pin";
+  var CSS_KEY3 = "zl-pin-style";
+  var ID_FAIXA = "zl-pin-faixa";
+  var CSS_PIN = `
+  #${ID_FAIXA}{display:flex;flex-wrap:wrap;gap:5px;padding:7px 10px;
+    border-bottom:1px solid rgba(255,255,255,.09);background:rgba(34,211,170,.06);
+    font-family:system-ui,sans-serif;max-height:104px;overflow:auto}
+  #${ID_FAIXA} .zl-pin-tit{width:100%;font-size:10px;letter-spacing:.08em;color:#8696a0;
+    text-transform:uppercase;margin-bottom:1px}
+  #${ID_FAIXA} .zl-pin-chip{display:inline-flex;align-items:center;gap:5px;max-width:100%;
+    padding:3px 4px 3px 8px;border-radius:99px;background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.10);cursor:pointer}
+  #${ID_FAIXA} .zl-pin-chip:hover{background:rgba(34,211,170,.20)}
+  #${ID_FAIXA} .zl-pin-chip .nm{font-size:12px;color:#e9edef;max-width:150px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #${ID_FAIXA} .zl-pin-chip .off{border:none;background:rgba(0,0,0,.28);color:#e9edef;
+    cursor:pointer;font-size:10px;line-height:1;padding:3px 5px;border-radius:99px;font-family:inherit}
+  #${ID_FAIXA} .zl-pin-chip .off:hover{background:rgba(244,63,94,.55)}
+  .zl-pin-dot{position:absolute;right:3px;top:3px;font-size:9px;line-height:1;pointer-events:none;z-index:5;
+    filter:drop-shadow(0 0 2px rgba(0,0,0,.7))}
+`;
+  var timer3 = null;
+  var fixados = [];
+  function carregar2() {
+    const bruto = settings.pinExtra;
+    fixados = Array.isArray(bruto) ? bruto.filter((x) => x && typeof x.jid === "string" && x.jid).map((x) => ({ jid: x.jid, nome: String(x.nome || "").slice(0, 80) })) : [];
+  }
+  async function gravar2() {
+    try {
+      await invoke("save_module_data", { chave: "pinExtra", valor: fixados });
+      settings.pinExtra = fixados;
+    } catch (e) {
+      showPanel("N\xE3o deu para salvar os fixados", e && e.message || String(e));
+    }
+  }
+  var estaFixado = (jid) => !!jid && fixados.some((f) => f.jid === jid);
+  function linhaDe(jid) {
+    return linhasDaLista().find((r) => chatIdDaLinha(r) === jid) || null;
+  }
+  function fixadoNativo(row) {
+    if (!row) return false;
+    try {
+      return !!row.querySelector('[data-icon*="pin"],[data-testid*="pin"],[aria-label*="ixad"]');
+    } catch (_) {
+      return false;
+    }
+  }
+  function abrirConversa(jid, nome) {
+    const row = linhaDe(jid);
+    if (!row) {
+      return showPanel(
+        "Conversa fora da parte renderizada",
+        "\u201C" + (nome || jid) + "\u201D continua fixada aqui, mas a linha dela n\xE3o est\xE1 no peda\xE7o que o WhatsApp desenhou agora \u2014 a lista \xE9 virtualizada e o ZapLite n\xE3o a rola sozinho (rolar a lista inteira por conta pr\xF3pria \xE9 o tipo de automa\xE7\xE3o que chama aten\xE7\xE3o da sess\xE3o).\n\nRole a lista at\xE9 ela aparecer, ou use a busca do WhatsApp."
+      );
+    }
+    cliqueReal(row);
+  }
+  function pintarFaixa() {
+    const pane = document.querySelector("#pane-side");
+    const pai = pane && pane.parentElement;
+    let faixa = document.getElementById(ID_FAIXA);
+    if (!pai || !fixados.length) {
+      if (faixa) faixa.remove();
+      return;
+    }
+    if (!faixa) {
+      faixa = document.createElement("div");
+      faixa.id = ID_FAIXA;
+    }
+    if (faixa.parentElement !== pai || faixa.nextElementSibling !== pane) {
+      pai.insertBefore(faixa, pane);
+    }
+    let mudou = false;
+    for (const f of fixados) {
+      const row = linhaDe(f.jid);
+      const nome = row ? nomeDaLinha(row) : "";
+      if (nome && nome !== f.nome) {
+        f.nome = nome;
+        mudou = true;
+      }
+    }
+    const assinatura = fixados.map((f) => f.jid + "\0" + f.nome).join("|");
+    if (faixa.dataset.zl !== assinatura) {
+      faixa.dataset.zl = assinatura;
+      faixa.textContent = "";
+      const tit = document.createElement("div");
+      tit.className = "zl-pin-tit";
+      tit.textContent = "Fixados extras do ZapLite (" + fixados.length + ") \u2014 locais, fora do limite do WhatsApp";
+      faixa.appendChild(tit);
+      fixados.forEach((f) => {
+        const chip = document.createElement("div");
+        chip.className = "zl-pin-chip";
+        chip.title = "Abrir \u201C" + (f.nome || f.jid) + "\u201D";
+        const nm = document.createElement("span");
+        nm.className = "nm";
+        nm.textContent = "\u{1F4CC} " + (f.nome || f.jid);
+        const off = document.createElement("button");
+        off.className = "off";
+        off.type = "button";
+        off.textContent = "\u2715";
+        off.title = "Tirar dos fixados extras";
+        off.onclick = (e) => {
+          e.stopPropagation();
+          desfixar(f.jid);
+        };
+        chip.onclick = () => abrirConversa(f.jid, f.nome);
+        chip.appendChild(nm);
+        chip.appendChild(off);
+        faixa.appendChild(chip);
+      });
+    }
+    if (mudou) gravar2();
+  }
+  function pintarLinhas() {
+    for (const row of linhasDaLista()) {
+      const tem = estaFixado(chatIdDaLinha(row));
+      const ja = row.querySelector(":scope > .zl-pin-dot");
+      if (tem && !ja) {
+        const d = document.createElement("span");
+        d.className = "zl-pin-dot";
+        d.textContent = "\u{1F4CC}";
+        d.title = "Fixada extra no ZapLite (n\xE3o \xE9 a fixa\xE7\xE3o do WhatsApp)";
+        if (getComputedStyle(row).position === "static") row.style.position = "relative";
+        row.appendChild(d);
+      } else if (!tem && ja) {
+        ja.remove();
+      }
+    }
+  }
+  function pintar2() {
+    try {
+      pintarFaixa();
+      pintarLinhas();
+    } catch (e) {
+      console.warn("[ZapLite] pinExtra:", e && e.message);
+    }
+  }
+  function limparMarcas2() {
+    const f = document.getElementById(ID_FAIXA);
+    if (f) f.remove();
+    document.querySelectorAll(".zl-pin-dot").forEach((d) => d.remove());
+  }
+  async function desfixar(jid) {
+    fixados = fixados.filter((f) => f.jid !== jid);
+    await gravar2();
+    pintar2();
+  }
+  async function fixarAberta() {
+    const jid = chatIdAberto();
+    if (!jid) {
+      return showPanel(
+        "Fixar sem limite",
+        "Nenhuma conversa aberta. Abra a conversa que voc\xEA quer fixar \u2014 a fixa\xE7\xE3o fica presa ao identificador dela, n\xE3o ao nome (nome muda, id n\xE3o)."
+      );
+    }
+    if (estaFixado(jid)) {
+      await desfixar(jid);
+      return showPanel("Fixados extras", "\u201C" + (nomeDaConversaAberta() || jid) + "\u201D saiu dos fixados extras.");
+    }
+    const row = linhaDe(jid);
+    fixados.push({ jid, nome: nomeDaConversaAberta() || (row ? nomeDaLinha(row) : "") || jid });
+    await gravar2();
+    pintar2();
+    showPanel(
+      "Fixada no ZapLite",
+      "\u201C" + (nomeDaConversaAberta() || jid) + "\u201D entrou na faixa de fixados extras, no topo da lista.\n\n" + (fixadoNativo(row) ? "Aviso: esta conversa J\xC1 est\xE1 fixada no pr\xF3prio WhatsApp. Ela vai aparecer nos dois lugares \u2014 o ZapLite n\xE3o mexeu na fixa\xE7\xE3o nativa e n\xE3o vai mexer.\n\n" : "") + "Isto \xE9 LOCAL: fica s\xF3 nesta m\xE1quina, n\xE3o \xE9 a fixa\xE7\xE3o do WhatsApp e a outra pessoa n\xE3o fica sabendo. A fixa\xE7\xE3o do WhatsApp continua exatamente como estava."
+    );
+  }
+  function abrirGerenciador() {
+    const form = document.createElement("div");
+    form.className = "zl-form";
+    const cab = document.createElement("div");
+    cab.style.whiteSpace = "pre-wrap";
+    const jid = chatIdAberto();
+    cab.textContent = (jid ? "Conversa aberta: " + (nomeDaConversaAberta() || jid) + (estaFixado(jid) ? "\nJ\xE1 est\xE1 nos fixados extras." : "\nAinda n\xE3o est\xE1 nos fixados extras.") : "Nenhuma conversa aberta.") + "\nFixados extras agora: " + fixados.length;
+    const lim = document.createElement("div");
+    lim.className = "zl-lim";
+    lim.textContent = "Esta lista \xE9 LOCAL e n\xE3o tem limite. Ela n\xE3o \xE9 a fixa\xE7\xE3o do WhatsApp: o ZapLite nunca clica em \u201CFixar conversa\u201D no menu nativo, ent\xE3o os fixados de verdade continuam como est\xE3o. A faixa fica acima da lista e sobrevive a recarregar e a renavegar, porque o que ela guarda \xE9 o identificador da conversa, no settings.json desta m\xE1quina.";
+    const lista = document.createElement("div");
+    lista.className = "zl-lista";
+    if (!fixados.length) {
+      const v = document.createElement("div");
+      v.className = "zl-lim";
+      v.textContent = "Nenhuma conversa fixada aqui ainda.";
+      lista.appendChild(v);
+    }
+    fixados.forEach((f) => {
+      const it = document.createElement("div");
+      it.className = "zl-item";
+      const t = document.createElement("span");
+      const renderizada = !!linhaDe(f.jid);
+      t.textContent = (f.nome || f.jid) + (renderizada ? "" : "  (linha n\xE3o renderizada agora)");
+      const x = document.createElement("button");
+      x.className = "zl-x2";
+      x.type = "button";
+      x.textContent = "tirar";
+      x.onclick = async () => {
+        await desfixar(f.jid);
+        abrirGerenciador();
+      };
+      it.appendChild(t);
+      it.appendChild(x);
+      lista.appendChild(it);
+    });
+    form.appendChild(cab);
+    form.appendChild(lim);
+    form.appendChild(lista);
+    return showPanel("Fixar sem limite (" + fixados.length + ")", form, [
+      [jid && estaFixado(jid) ? "Desafixar esta conversa" : "Fixar a conversa aberta", fixarAberta]
+    ]);
+  }
+  function registrarPinExtra() {
+    reg({
+      id: "pinExtra",
+      label: "Fixar sem limite",
+      apply() {
+        css(CSS_PIN, CSS_KEY3);
+        addAct(ensureDock(), ID_ACT9, "\u{1F4CC}", "Fixados extras", "", abrirGerenciador);
+        carregar2();
+        pintar2();
+        if (timer3) return;
+        timer3 = setInterval(pintar2, 1500);
+      },
+      revert() {
+        dropAct(ID_ACT9);
+        if (timer3) {
+          clearInterval(timer3);
+          timer3 = null;
+        }
+        limparMarcas2();
+        dropCss(CSS_KEY3);
+      }
+    });
+  }
+
+  // src-tauri/injection/src/modulos/busca-avancada.js
+  var ID_ACT10 = "zl-busca";
+  var CSS_KEY4 = "zl-busca-style";
+  var CSS_BUSCA = `
+  .zl-bsc-lin{display:flex;align-items:center;gap:8px;font-size:12px}
+  .zl-bsc-lin > span:first-child{flex:0 0 76px;color:#8696a0}
+  .zl-bsc-lin input,.zl-bsc-lin select{flex:1;min-width:0;box-sizing:border-box;
+    background:#0b141a;color:#e9edef;font-family:inherit;font-size:12.5px;
+    border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:6px 8px}
+  .zl-bsc-hit{display:block;width:100%;text-align:left;font-family:inherit;cursor:pointer;
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);color:#e9edef;
+    border-radius:8px;padding:6px 8px;font-size:12px;line-height:1.4}
+  .zl-bsc-hit:hover{background:rgba(34,211,170,.16)}
+  .zl-bsc-hit b{color:var(--zl-accent,#22d3aa);font-weight:700}
+  .zl-bsc-hit i{color:#8696a0;font-style:normal;font-size:10.5px}
+  .zl-bsc-alvo{outline:3px solid var(--zl-accent,#22d3aa) !important;outline-offset:2px;
+    border-radius:8px;transition:outline-color .3s}
+`;
+  var AVISO3 = "Escopo real: s\xF3 o que est\xE1 RENDERIZADO. A lista de conversas e a conversa aberta s\xE3o virtualizadas e o ZapLite n\xE3o as rola sozinho \u2014 role at\xE9 onde quiser ANTES de buscar e os n\xFAmeros abaixo sobem. Isto n\xE3o busca no hist\xF3rico do WhatsApp, e nenhum resultado aqui vem de servidor nenhum.";
+  var TIPOS = [
+    ["", "qualquer coisa"],
+    ["texto", "s\xF3 texto (sem m\xEDdia)"],
+    ["imagem", "imagem"],
+    ["v\xEDdeo", "v\xEDdeo"],
+    ["\xE1udio", "\xE1udio"],
+    ["documento", "documento"]
+  ];
+  function normalizar(s) {
+    return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  }
+  function dataComparavel(s) {
+    const t = String(s || "").trim();
+    if (!t) return 0;
+    let m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return +m[1] * 1e4 + +m[2] * 100 + +m[3];
+    m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})$/);
+    if (!m) return 0;
+    const dia = +m[1];
+    const mes = +m[2];
+    let ano = +m[3];
+    if (ano < 100) ano += 2e3;
+    if (dia < 1 || dia > 31 || mes < 1 || mes > 12) return 0;
+    return ano * 1e4 + mes * 100 + dia;
+  }
+  function casaMensagem(msg, f) {
+    const alvoTexto = normalizar(f.texto);
+    if (alvoTexto && normalizar(msg.texto).indexOf(alvoTexto) < 0) return { casa: false, semData: false };
+    const alvoQuem = normalizar(f.remetente);
+    if (alvoQuem && normalizar(msg.autor).indexOf(alvoQuem) < 0) return { casa: false, semData: false };
+    if (f.tipo) {
+      if (f.tipo === "texto") {
+        if (msg.midia) return { casa: false, semData: false };
+      } else if (msg.midia !== f.tipo) {
+        return { casa: false, semData: false };
+      }
+    }
+    const de = dataComparavel(f.de);
+    const ate = dataComparavel(f.ate);
+    if (de || ate) {
+      const d = dataComparavel(msg.data);
+      if (!d) return { casa: false, semData: true };
+      if (de && d < de) return { casa: false, semData: false };
+      if (ate && d > ate) return { casa: false, semData: false };
+    }
+    return { casa: true, semData: false };
+  }
+  function casaConversa(conv, f) {
+    const alvoTexto = normalizar(f.texto);
+    if (alvoTexto) {
+      if (normalizar(conv.nome).indexOf(alvoTexto) < 0 && normalizar(conv.previa).indexOf(alvoTexto) < 0) {
+        return false;
+      }
+    }
+    const alvoQuem = normalizar(f.remetente);
+    if (alvoQuem && normalizar(conv.nome).indexOf(alvoQuem) < 0) return false;
+    return true;
+  }
+  function varrerMensagens() {
+    const out = [];
+    for (const bolha of bolhasVisiveis()) {
+      const d = dadosDaBolha(bolha);
+      if (d) out.push({ msg: d, el: bolha });
+    }
+    return out;
+  }
+  function varrerConversas() {
+    return linhasDaLista().map((r) => ({
+      jid: chatIdDaLinha(r),
+      nome: nomeDaLinha(r) || "(sem nome)",
+      previa: previaDaLinha(r),
+      hora: horaDaLinha(r),
+      el: r
+    })).filter((c) => c.jid);
+  }
+  var alvoAceso = null;
+  function acender(el) {
+    if (alvoAceso) alvoAceso.classList.remove("zl-bsc-alvo");
+    alvoAceso = el;
+    el.classList.add("zl-bsc-alvo");
+    try {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    } catch (_) {
+      el.scrollIntoView();
+    }
+    setTimeout(() => {
+      if (alvoAceso === el) {
+        el.classList.remove("zl-bsc-alvo");
+        alvoAceso = null;
+      }
+    }, 4e3);
+  }
+  function trecho(texto, alvo) {
+    const t = String(texto || "");
+    if (!alvo) return t.slice(0, 120);
+    const i = normalizar(t).indexOf(normalizar(alvo));
+    if (i < 0) return t.slice(0, 120);
+    const ini = Math.max(0, i - 30);
+    return (ini ? "\u2026" : "") + t.slice(ini, ini + 120);
+  }
+  function abrir5() {
+    const form = document.createElement("div");
+    form.className = "zl-form";
+    function linha(rotulo, el) {
+      const l = document.createElement("div");
+      l.className = "zl-bsc-lin";
+      const t = document.createElement("span");
+      t.textContent = rotulo;
+      l.appendChild(t);
+      l.appendChild(el);
+      return l;
+    }
+    function entrada(tipo, ph) {
+      const i = document.createElement("input");
+      i.type = tipo;
+      if (ph) i.placeholder = ph;
+      i.spellcheck = false;
+      return i;
+    }
+    const iTexto = entrada("text", "palavra ou trecho");
+    const iQuem = entrada("text", "nome do remetente");
+    const iDe = entrada("date");
+    const iAte = entrada("date");
+    const iTipo = document.createElement("select");
+    TIPOS.forEach(([v, r]) => {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = r;
+      iTipo.appendChild(o);
+    });
+    const iOnde = document.createElement("select");
+    [
+      ["ambos", "conversa aberta + lista"],
+      ["mensagens", "s\xF3 a conversa aberta"],
+      ["conversas", "s\xF3 a lista de conversas"]
+    ].forEach(([v, r]) => {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = r;
+      iOnde.appendChild(o);
+    });
+    const escopo = document.createElement("div");
+    escopo.className = "zl-lim";
+    const contarEscopo = () => {
+      const m = varrerMensagens().length;
+      const c = varrerConversas().length;
+      escopo.textContent = "Varre agora: " + m + " mensagens renderizadas em \u201C" + (nomeDaConversaAberta() || "nenhuma conversa aberta") + "\u201D e " + c + " conversas renderizadas na lista.\n\n" + AVISO3;
+    };
+    escopo.style.whiteSpace = "pre-wrap";
+    contarEscopo();
+    const resultados = document.createElement("div");
+    resultados.className = "zl-lista";
+    resultados.style.display = "none";
+    form.appendChild(linha("cont\xE9m", iTexto));
+    form.appendChild(linha("remetente", iQuem));
+    form.appendChild(linha("de (data)", iDe));
+    form.appendChild(linha("at\xE9 (data)", iAte));
+    form.appendChild(linha("tipo", iTipo));
+    form.appendChild(linha("onde", iOnde));
+    form.appendChild(escopo);
+    form.appendChild(resultados);
+    function buscar() {
+      const f = {
+        texto: iTexto.value,
+        remetente: iQuem.value,
+        de: iDe.value,
+        ate: iAte.value,
+        tipo: iTipo.value
+      };
+      const onde = iOnde.value;
+      resultados.textContent = "";
+      resultados.style.display = "flex";
+      const msgs = onde === "conversas" ? [] : varrerMensagens();
+      const convs = onde === "mensagens" ? [] : varrerConversas();
+      let semData = 0;
+      const achouMsg = [];
+      for (const m of msgs) {
+        const r = casaMensagem(m.msg, f);
+        if (r.semData) semData++;
+        if (r.casa) achouMsg.push(m);
+      }
+      const achouConv = convs.filter((c) => casaConversa(c, f));
+      const resumo = document.createElement("div");
+      resumo.className = "zl-lim";
+      resumo.style.whiteSpace = "pre-wrap";
+      resumo.textContent = "Varridas " + msgs.length + " mensagens e " + convs.length + " conversas (s\xF3 o renderizado).\nAchadas: " + achouMsg.length + " mensagens e " + achouConv.length + " conversas." + (semData ? "\n" + semData + " mensagens ficaram FORA do filtro de data por n\xE3o terem carimbo leg\xEDvel na bolha (o WhatsApp s\xF3 p\xF5e data em algumas). Sem filtro de data elas voltam a ser vistas." : "") + (iDe.value || iAte.value ? "\nO filtro de data N\xC3O vale para a lista de conversas: o r\xF3tulo da linha (\u201C16:35\u201D, \u201COntem\u201D) \xE9 da \xFAltima mensagem e quase nunca \xE9 uma data." : "");
+      resultados.appendChild(resumo);
+      if (!achouMsg.length && !achouConv.length) {
+        const v = document.createElement("div");
+        v.className = "zl-lim";
+        v.textContent = "Nada casou dentro do que estava renderizado. Role a conversa (ou a lista) e busque de novo.";
+        resultados.appendChild(v);
+        return;
+      }
+      achouConv.forEach((c) => {
+        const b = document.createElement("button");
+        b.className = "zl-bsc-hit";
+        b.type = "button";
+        const t = document.createElement("b");
+        t.textContent = "conversa \xB7 " + c.nome;
+        const d = document.createElement("div");
+        d.textContent = trecho(c.previa, f.texto);
+        const h = document.createElement("i");
+        h.textContent = c.hora ? " " + c.hora : "";
+        b.appendChild(t);
+        b.appendChild(h);
+        b.appendChild(d);
+        b.onclick = () => cliqueReal(c.el);
+        b.title = "Abrir esta conversa";
+        resultados.appendChild(b);
+      });
+      achouMsg.forEach((m) => {
+        const b = document.createElement("button");
+        b.className = "zl-bsc-hit";
+        b.type = "button";
+        const t = document.createElement("b");
+        t.textContent = (m.msg.autor || (m.msg.saida ? "Voc\xEA" : "recebida")) + (m.msg.midia ? " \xB7 " + m.msg.midia : "");
+        const h = document.createElement("i");
+        h.textContent = " " + [m.msg.hora, m.msg.data].filter(Boolean).join(", ");
+        const d = document.createElement("div");
+        d.textContent = trecho(m.msg.texto, f.texto);
+        b.appendChild(t);
+        b.appendChild(h);
+        b.appendChild(d);
+        b.onclick = () => acender(m.el);
+        b.title = "Rolar at\xE9 esta mensagem (n\xE3o abre nem marca nada)";
+        resultados.appendChild(b);
+      });
+    }
+    iTexto.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        buscar();
+      }
+    });
+    const p = showPanel("Busca avan\xE7ada", form, [
+      ["Buscar", buscar],
+      ["Recontar o escopo", contarEscopo]
+    ]);
+    setTimeout(() => iTexto.focus(), 0);
+    return p;
+  }
+  function registrarBuscaAvancada() {
+    reg({
+      id: "advSearch",
+      label: "Busca avan\xE7ada",
+      apply() {
+        css(CSS_BUSCA, CSS_KEY4);
+        addAct(ensureDock(), ID_ACT10, "\u{1F50E}", "Busca avan\xE7ada", "", abrir5);
+      },
+      revert() {
+        dropAct(ID_ACT10);
+        if (alvoAceso) {
+          alvoAceso.classList.remove("zl-bsc-alvo");
+          alvoAceso = null;
+        }
+        dropCss(CSS_KEY4);
+      }
+    });
+  }
+
+  // src-tauri/injection/src/modulos/atalho-global.js
+  var ID_ACT11 = "zl-atalhos";
+  var EVENTO = "zaplite://atalho";
+  var ACOES2 = {
+    newReminder: { botao: "zl-lembretes", modulo: "Lembretes" }
+  };
+  var desligar = null;
+  function executar2(acao) {
+    const alvo = ACOES2[acao];
+    if (!alvo) {
+      console.warn("[ZapLite] atalho global desconhecido:", acao);
+      return;
+    }
+    const b = document.getElementById(alvo.botao);
+    if (!b) {
+      return showPanel(
+        "Atalho sem destino",
+        "O atalho global pediu \u201C" + alvo.modulo + "\u201D, mas esse m\xF3dulo est\xE1 desligado \u2014 ent\xE3o n\xE3o existe nada para abrir.\n\nLigue \u201C" + alvo.modulo + "\u201D no Painel, ou tire este atalho da aba de atalhos.",
+        [["Abrir o Painel", () => invoke("open_settings", { secao: "mods" }).catch(() => {
+        })]]
+      );
+    }
+    b.click();
+  }
+  function explicar() {
+    showPanel(
+      "Atalhos globais",
+      "Os atalhos globais s\xE3o registrados no Windows pelo ZapLite, ent\xE3o funcionam mesmo com a janela escondida ou com outro programa em foco.\n\n\xB7 Esconder / mostrar o ZapLite\n\xB7 Abrir o Painel\n\xB7 Novo lembrete (nasce desligado)\n\nQuem escolhe as combina\xE7\xF5es \xE9 o Painel, na aba M\xD3DULOS. L\xE1 tamb\xE9m aparece o resultado REAL do registro: se outro programa j\xE1 tiver tomado uma combina\xE7\xE3o, o Windows recusa aquele atalho \u2014 o ZapLite continua funcionando normalmente e diz qual falhou e por qu\xEA.\n\nNenhum atalho envia mensagem, escreve na caixa ou abre conversa.",
+      [["Abrir o Painel", () => invoke("open_settings", { secao: "mods" }).catch((e) => showPanel("Erro", e.message))]]
+    );
+  }
+  function registrarAtalhoGlobal() {
+    reg({
+      id: "globalHotkey",
+      label: "Atalho global",
+      apply() {
+        addAct(ensureDock(), ID_ACT11, "\u2328", "Atalhos globais", "", explicar);
+        if (desligar) return;
+        if (!window.__TAURI__ || !window.__TAURI__.event) return;
+        window.__TAURI__.event.listen(EVENTO, (ev) => {
+          const p = ev && ev.payload || {};
+          executar2(String(p.acao || ""));
+        }).then((off) => {
+          desligar = off;
+        }).catch((e) => console.warn("[ZapLite] atalho global (listen):", e && e.message));
+      },
+      revert() {
+        dropAct(ID_ACT11);
+        if (desligar) {
+          try {
+            desligar();
+          } catch (_) {
+          }
+          desligar = null;
+        }
       }
     });
   }
@@ -4543,6 +5614,11 @@
   registrarLembretes();
   registrarBaixarMassa();
   registrarExportar();
+  registrarPinExtra();
+  registrarBuscaAvancada();
+  registrarAtalhoGlobal();
+  registrarFigurinhaCriar();
+  registrarFigurinhaImagem();
   window.__ZAPLITE_RELOAD__ = applyAll;
   boot();
 })();

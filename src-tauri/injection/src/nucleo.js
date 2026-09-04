@@ -135,6 +135,21 @@ const MODULOS_PADRAO = {
   bulkUnread: true,
   exportChat: true,
   bulkDownload: true,
+  // ONDA 3 — quatro nascem LIGADOS pela mesma razão dos anteriores: ligado,
+  // cada um acrescenta uma entrada no dock e nada mais. `pinExtra` é o único
+  // com efeito contínuo, e o efeito é o mesmo das notas — um temporizador de
+  // 1,5 s que remonta a faixa; sem nada fixado ele nem desenha a faixa.
+  pinExtra: true,
+  advSearch: true,
+  stickerMaker: true,
+  imgToSticker: true,
+  // `globalHotkey` nasce DESLIGADO, e aqui o argumento é diferente dos outros:
+  // ligá-lo faz o ZapLite TOMAR combinações de tecla do sistema inteiro
+  // (Ctrl+Shift+Z passa a ser global, e o usuário pode acrescentar uma
+  // terceira). Isso é uma decisão sobre a máquina dele, não sobre este app —
+  // então é dele. Desligado, o comportamento é exatamente o de sempre: só o
+  // Ctrl+Shift+W esconde/mostra.
+  globalHotkey: false,
 };
 
 export async function applyAll() {
