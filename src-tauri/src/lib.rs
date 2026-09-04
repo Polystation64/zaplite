@@ -235,7 +235,12 @@ pub(crate) fn read_settings(app: &AppHandle) -> Value {
 /// allowlist, e o teste abaixo garante que nenhuma delas escapa.)
 /// (`nsfw` e `transcricao` guardam só preferência de exibição e um teto de
 /// duração — nada de caminho de modelo, que continua fora da lista.)
-const CHAVES_PUBLICAS: &[&str] = &["modules", "theme", "hide", "aiTone", "nsfw", "transcricao"];
+/// `ia` guarda as preferências dos módulos de IA sob demanda (idioma de
+/// destino da tradução, janela do resumo diário). Nada de segredo: é
+/// exatamente o mesmo tipo de chave que `transcricao` — o bundle precisa
+/// lê-la, e quem a lê já vê a tela inteira do WhatsApp de qualquer forma.
+const CHAVES_PUBLICAS: &[&str] =
+    &["modules", "theme", "hide", "aiTone", "nsfw", "transcricao", "ia"];
 
 /// `notify` NÃO está na lista acima de propósito: as regras carregam os NOMES
 /// dos contatos do usuário (é uma agenda), e qualquer script rodando em

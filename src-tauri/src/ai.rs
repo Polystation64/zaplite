@@ -233,15 +233,19 @@ pub fn resolve(settings: &Value) -> Result<Config, String> {
         );
     }
 
-    // N4 — só o OmniRoute troca de modelo por causa de imagem; os outros
-    // provedores continuam usando um modelo só, exatamente como antes.
-    let vision_model = if provider == Provider::OmniRoute {
-        let escolhido = settings["aiVisionModel"].as_str().unwrap_or("").trim();
-        if escolhido.is_empty() {
-            OMNIROUTE_MODELO_VISAO.to_string()
-        } else {
-            escolhido.to_string()
-        }
+    // N4 — o modelo de imagem sai do campo "Modelo para imagem" do Painel, e
+    // vale para QUALQUER provedor. Antes só o OmniRoute o lia, e isso deixava
+    // um buraco medido nesta máquina: apontar o modo "Compatível com OpenAI"
+    // para a MESMA porta do OmniRoute (que é o que a URL base padrão faz)
+    // é uma configuração legítima e comum — e nela toda chamada com imagem ia
+    // para o apelido `auto/*`, que descarta a imagem. O que continua exclusivo
+    // do OmniRoute é o PADRÃO de fábrica: só nele sabemos, sem perguntar, que
+    // id concreto existe no catálogo.
+    let escolhido = settings["aiVisionModel"].as_str().unwrap_or("").trim();
+    let vision_model = if !escolhido.is_empty() {
+        escolhido.to_string()
+    } else if provider == Provider::OmniRoute {
+        OMNIROUTE_MODELO_VISAO.to_string()
     } else {
         String::new()
     };
@@ -890,6 +894,9 @@ pub async fn ai_complete(
 ) -> Result<String, String> {
     let settings = crate::read_settings(&app);
     let cfg = resolve(&settings)?;
+    if image_b64.is_some() {
+        conferir_visao(&cfg)?;
+    }
     executar(
         &cfg,
         &system,
@@ -898,6 +905,31 @@ pub async fn ai_complete(
         media_type.as_deref(),
     )
     .await
+}
+
+/// N4(b) — apelido `auto/*` recebendo imagem é uma resposta ERRADA com cara de
+/// certa, e isso é pior do que uma falha.
+///
+/// Medido no endpoint real: o roteador descarta as partes de imagem ANTES de
+/// escolher o modelo, e a resposta que volta é um educado "não recebi nenhuma
+/// imagem". Quem chamou recebe `Ok(...)`, o painel mostra o texto, e o usuário
+/// conclui que o OCR não funciona — sem nenhum erro em lugar nenhum. Aqui isso
+/// vira falha, com o caminho de saída escrito por extenso.
+pub fn conferir_visao(cfg: &Config) -> Result<(), String> {
+    let modelo = if cfg.vision_model.trim().is_empty() {
+        cfg.model.trim()
+    } else {
+        cfg.vision_model.trim()
+    };
+    if modelo.starts_with("auto/") {
+        return Err(format!(
+            "A imagem iria para o apelido `{modelo}`, e o roteador descarta a imagem antes de \
+             escolher o modelo real — a resposta voltaria dizendo que nenhuma imagem chegou. \
+             Preencha \"Modelo para imagem\" no Painel (aba IA) com um id concreto de modelo \
+             com visao, por exemplo {OMNIROUTE_MODELO_VISAO}."
+        ));
+    }
+    Ok(())
 }
 
 /// Estado da camada de IA para o Painel. NUNCA devolve a chave — só os
@@ -1292,6 +1324,69 @@ mod testes {
                 .vision_model,
             ""
         );
+    }
+
+    /// N4 — o campo "Modelo para imagem" vale para qualquer provedor.
+    /// A configuração desta máquina é o caso real: modo "compatível" apontado
+    /// para a porta do OmniRoute. Antes o campo era ignorado ali, e a imagem
+    /// saía no apelido `auto/*`.
+    #[test]
+    fn modelo_de_imagem_vale_para_qualquer_provedor() {
+        let base = json!({
+            "aiProvider": "compatible",
+            "aiBaseUrl": "http://localhost:20128/v1",
+            "aiModel": "auto/best-fast"
+        });
+        // sem o campo: nada muda (não temos como adivinhar o catálogo)
+        let c = resolve(&base).unwrap();
+        assert_eq!(c.vision_model, "");
+        // com o campo preenchido: é ele que recebe a imagem…
+        let mut com = base.clone();
+        com["aiVisionModel"] = json!("claude/claude-haiku-4-5-20251001");
+        let c = resolve(&com).unwrap();
+        assert_eq!(
+            build_request(&c, "", "leia", Some("AAA"), Some("image/png")).body["model"],
+            "claude/claude-haiku-4-5-20251001"
+        );
+        // …e o modelo de texto continua intocado
+        assert_eq!(
+            build_request(&c, "", "oi", None, None).body["model"],
+            "auto/best-fast"
+        );
+    }
+
+    /// N4(b) — mandar imagem para um apelido `auto/*` tem que FALHAR, e não
+    /// devolver a resposta educada do roteador dizendo que nada chegou.
+    #[test]
+    fn imagem_para_apelido_auto_falha_com_saida_escrita() {
+        let c = resolve(&json!({
+            "aiProvider": "compatible",
+            "aiBaseUrl": "http://localhost:20128/v1",
+            "aiModel": "auto/best-fast"
+        }))
+        .unwrap();
+        let e = conferir_visao(&c).unwrap_err();
+        assert!(e.contains("auto/best-fast"), "{e}");
+        assert!(e.contains("Modelo para imagem"), "{e}");
+        assert!(e.contains(OMNIROUTE_MODELO_VISAO), "{e}");
+
+        // com o campo preenchido, passa
+        let c = resolve(&json!({
+            "aiProvider": "compatible",
+            "aiBaseUrl": "http://localhost:20128/v1",
+            "aiModel": "auto/best-fast",
+            "aiVisionModel": "claude/claude-haiku-4-5-20251001"
+        }))
+        .unwrap();
+        assert!(conferir_visao(&c).is_ok());
+
+        // e o OmniRoute, que já tem padrão de fábrica, nunca cai aqui
+        assert!(conferir_visao(&resolve(&json!({ "aiProvider": "omniroute" })).unwrap()).is_ok());
+
+        // provedor sem apelido nenhum: segue a vida
+        let mut o = cfg(Provider::Compatible);
+        o.model = "llava".into();
+        assert!(conferir_visao(&o).is_ok());
     }
 
     // ---------- N3: catálogo de modelos ----------

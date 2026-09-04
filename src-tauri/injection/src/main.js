@@ -16,7 +16,10 @@
 
    A ordem abaixo é a MESMA do bundle.js de antes da separação (v0.1.5), linha
    por linha: connCore, os 14 módulos na ordem original, a captura de áudio
-   entre anti-apagadas e transcrever, e o boot por último.
+   entre anti-apagadas e transcrever, e o boot por último. Os quatro módulos
+   de IA sob demanda (tradução, OCR, golpe, resumo diário) entram no FIM da
+   lista de registro, depois do menu de contexto — nenhum deles tem efeito
+   fora do próprio `apply()`, então a ordem original continua intacta.
    ============================================================================ */
 import { connCore } from "./conn-core.js";
 import { instalarCapturaDeAudio } from "./midia.js";
@@ -36,6 +39,10 @@ import { registrarNsfwBlur } from "./modulos/nsfw-blur.js";
 import { registrarAutoTranscrever } from "./modulos/auto-transcrever.js";
 import { registrarNotificacoes } from "./modulos/notificacoes.js";
 import { registrarMenuContexto } from "./modulos/menu-contexto.js";
+import { registrarTraduzir } from "./modulos/traduzir.js";
+import { registrarOcr } from "./modulos/ocr.js";
+import { registrarGolpe } from "./modulos/golpe.js";
+import { registrarResumoDiario } from "./modulos/resumo-diario.js";
 
 /* 1. Camada de conexão: precisa do gancho no WebSocket ANTES de a página
       abrir o primeiro socket. É o primeiro efeito do bundle. */
@@ -61,6 +68,17 @@ registrarNsfwBlur();
 registrarAutoTranscrever();
 registrarNotificacoes();
 registrarMenuContexto();
+
+/* 2b. Os quatro módulos de IA SOB DEMANDA. Vêm DEPOIS do menu de contexto
+      de propósito: o menu consulta o interruptor de cada um (`on("ocr")`,
+      `on("translate")`, `on("scamDetect")`) para decidir o que oferecer, e
+      a ordem de registro é a ordem em que `applyAll` os aplica. Nenhum
+      deles observa nada nem varre nada: o efeito de `apply()` é uma
+      entrada no dock, e toda chamada de IA nasce de um clique. */
+registrarTraduzir();
+registrarOcr();
+registrarGolpe();
+registrarResumoDiario();
 
 /* 4. O Rust chama isto ao salvar settings. */
 window.__ZAPLITE_RELOAD__ = applyAll;

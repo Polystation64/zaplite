@@ -416,6 +416,62 @@ teste("o que não é link de conversa segue o caminho antigo", () => {
   }
 });
 
+/* ------------------------------------------------------------------------
+   Módulos de IA sob demanda (tradução, OCR, golpe, resumo diário)
+   ------------------------------------------------------------------------ */
+
+/* `cfgIa` é o único ponto por onde os quatro leem preferência do usuário, e
+   ele lê de um arquivo EDITÁVEL À MÃO. Sem os limites daqui, um
+   `digestHoras: 99999` no settings.json vira um resumo do ano inteiro numa
+   chamada só, no provedor pago do usuário. O `settings` do bundle é escopo de
+   módulo; injetá-lo como parâmetro do invólucro é o que deixa o teste
+   escolher o que a função enxerga. */
+const cfgIaCom = (settings) =>
+  new Function("settings", extrair("cfgIa") + "; return cfgIa();")(settings);
+
+teste("cfgIa devolve os padrões quando não há nada salvo", () => {
+  const c = cfgIaCom({});
+  assert.strictEqual(c.traduzirPara, "português do Brasil");
+  assert.strictEqual(c.digestHoras, 12);
+  assert.strictEqual(c.digestMaxConversas, 40);
+  assert.strictEqual(c.digestIncluirAberta, true);
+});
+
+teste("cfgIa segura valor absurdo vindo do settings.json editado à mão", () => {
+  const c = cfgIaCom({ ia: { digestHoras: 99999, digestMaxConversas: -3 } });
+  assert.strictEqual(c.digestHoras, 12, "janela fora da faixa tem que cair no padrão");
+  assert.strictEqual(c.digestMaxConversas, 40, "teto negativo tem que cair no padrão");
+  // e o que está dentro da faixa é respeitado
+  const ok = cfgIaCom({ ia: { digestHoras: 6, digestMaxConversas: 10 } });
+  assert.strictEqual(ok.digestHoras, 6);
+  assert.strictEqual(ok.digestMaxConversas, 10);
+});
+
+teste("cfgIa não deixa o idioma virar um prompt inteiro", () => {
+  const c = cfgIaCom({ ia: { traduzirPara: "x".repeat(500) } });
+  assert.strictEqual(c.traduzirPara.length, 40);
+  // string vazia não apaga o idioma: cai no padrão
+  assert.strictEqual(cfgIaCom({ ia: { traduzirPara: "   " } }).traduzirPara, "português do Brasil");
+});
+
+/* O detector de golpes é o único módulo cujo texto FIXO importa tanto quanto
+   o código: o resultado é opinião de um modelo, e a moldura é o que impede
+   que ele seja lido como veredito. Se alguém apagar o aviso "achando que
+   polui", o módulo continua funcionando e vira falsa segurança — que é
+   exatamente o dano que ele deveria evitar. Por isso o aviso é testado. */
+teste("o aviso do detector de golpes sobrevive ao empacotamento", () => {
+  for (const frase of [
+    "OPINI\\xC3O DE UM MODELO DE IA",
+    "n\\xE3o \\xE9 veredito",
+    "n\\xE3o abriu o link",
+    "Nenhum link foi aberto",
+  ]) {
+    assert.ok(SRC.includes(frase), "sumiu do bundle: " + frase);
+  }
+  // e o prompt continua proibindo o "isto é seguro"
+  assert.ok(SRC.includes("NUNCA declare que algo \\xE9 seguro"), "a proibição sumiu do prompt");
+});
+
 (async () => {
   let falhas = 0;
   for (const [nome, fn] of casos) {

@@ -1,9 +1,17 @@
-import { bolhaDe, ehApagada, textoDaBolha } from "../bolhas.js";
-import { ai } from "../ia.js";
+import { bolhaDe, ehApagada, imagemDaBolha, textoDaBolha } from "../bolhas.js";
+import { ai, cfgIa } from "../ia.js";
 import { ehBolhaDeAudio, salvarArquivo, transcreverBolha } from "../midia.js";
 import { css, dropCss, moduloPorId, on, reg, settings } from "../nucleo.js";
 import { avisarInstalacaoDaTranscricao, ehFaltaDeInstalacao, showPanel } from "../painel.js";
 import { guarded, invoke } from "../ponte.js";
+// Os itens de IA deste menu NÃO são escritos aqui: eles chamam a mesma
+// função do módulo que os implementa, e por isso obedecem ao interruptor
+// dele. Antes "traduzir", "extrair texto" e "isso parece golpe?" existiam
+// SÓ aqui dentro, sem interruptor e sem entrada no catálogo — três
+// recursos que o Painel jurava não existir e que estavam ligados.
+import { checarGolpe } from "./golpe.js";
+import { ocrDaBolha } from "./ocr.js";
+import { traduzirBolha } from "./traduzir.js";
 
 /* 32. Menu de contexto no botão direito das mensagens ------------------ */
 export function registrarMenuContexto() {
@@ -76,7 +84,7 @@ export function registrarMenuContexto() {
         // da bolha decide o que é áudio e de onde vêm os bytes. Seletor
         // duplicado é o que faz um cisma do WhatsApp quebrar os dois de uma vez.
         const audio = ehBolhaDeAudio(bolha);
-        const img = bolha.querySelector('img[src^="blob:"], img[src^="data:"]');
+        const img = imagemDaBolha(bolha);
         const video = bolha.querySelector('video[src^="blob:"], video source[src^="blob:"]');
         const itens = [];
 
@@ -140,25 +148,13 @@ export function registrarMenuContexto() {
         }
 
         if (img) {
-          itens.push([
-            "🔤",
-            "Extrair texto da imagem",
-            guarded(async () => {
-              showPanel("Texto da imagem", "Lendo…");
-              const b = await (await fetch(img.src)).blob();
-              const b64 = await new Promise((r) => {
-                const fr = new FileReader();
-                fr.onload = () => r(String(fr.result).split(",")[1]);
-                fr.readAsDataURL(b);
-              });
-              const t = await ai(
-                "Você transcreve todo o texto visível de uma imagem. Responda só com o texto, sem comentários.",
-                "Extraia o texto desta imagem.",
-                { image: b64, mediaType: b.type || "image/jpeg" }
-              );
-              showPanel("Texto da imagem", t);
-            }, "OCR"),
-          ]);
+          if (on("ocr")) {
+            itens.push([
+              "🔤",
+              "Extrair texto da imagem",
+              guarded(() => ocrDaBolha(bolha), "Texto da imagem"),
+            ]);
+          }
           itens.push([
             "💾",
             "Salvar imagem…",
@@ -186,18 +182,13 @@ export function registrarMenuContexto() {
             "Copiar texto",
             () => navigator.clipboard.writeText(texto).catch(() => {}),
           ]);
-          itens.push([
-            "🌐",
-            "Traduzir para português",
-            guarded(async () => {
-              showPanel("Tradução", "Traduzindo…");
-              const t = await ai(
-                "Você traduz mensagens para português do Brasil. Responda só com a tradução.",
-                texto
-              );
-              showPanel("Tradução", t);
-            }, "Tradução"),
-          ]);
+          if (on("translate")) {
+            itens.push([
+              "🌐",
+              "Traduzir para " + cfgIa().traduzirPara,
+              guarded(() => traduzirBolha(bolha), "Tradução"),
+            ]);
+          }
           itens.push([
             "✍",
             "Responder com sugestão da IA",
@@ -217,18 +208,13 @@ export function registrarMenuContexto() {
               } else showPanel("Rascunho", r);
             }, "Sugestão"),
           ]);
-          itens.push([
-            "🛡",
-            "Isso parece golpe?",
-            guarded(async () => {
-              showPanel("Análise", "Analisando…");
-              const t = await ai(
-                "Você avalia se uma mensagem é golpe, phishing ou fraude. Responda em português do Brasil, em até 4 linhas: veredito e os sinais que o justificam.",
-                texto
-              );
-              showPanel("Análise", t);
-            }, "Análise"),
-          ]);
+          if (on("scamDetect")) {
+            itens.push([
+              "🛡",
+              "Isso parece golpe?",
+              guarded(() => checarGolpe(texto), "Parece golpe? — opinião da IA"),
+            ]);
+          }
         }
 
         if (!itens.length) return;

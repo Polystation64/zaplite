@@ -112,6 +112,14 @@ const MODULOS_PADRAO = {
   // gasta CPU e manda recibo de "ouvida" sem o usuário pedir.
   nsfwBlur: false,
   autoTranscribe: false,
+  // Os quatro de IA nascem LIGADOS, e isso não contradiz o parágrafo acima:
+  // ligado, cada um deles acrescenta uma entrada no menu e nada mais. Não há
+  // varredura, observador nem chamada de IA sem um clique — o custo de
+  // deixá-los ligados é uma linha no dock, não uma conta no provedor.
+  translate: true,
+  ocr: true,
+  scamDetect: true,
+  dailyDigest: true,
 };
 
 export async function applyAll() {

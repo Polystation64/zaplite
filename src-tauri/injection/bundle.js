@@ -144,6 +144,24 @@
       return APAGADA_RE.test(bolha.textContent || "");
     }
   }
+  function imagemDaBolha(bolha) {
+    if (!bolha) return null;
+    try {
+      return bolha.querySelector('img[src^="blob:"], img[src^="data:"]');
+    } catch (_) {
+      return null;
+    }
+  }
+  function ultimaBolha(filtro) {
+    const todas = bolhasVisiveis();
+    for (let i = todas.length - 1; i >= 0; i--) {
+      try {
+        if (filtro(todas[i])) return todas[i];
+      } catch (_) {
+      }
+    }
+    return null;
+  }
 
   // src-tauri/injection/src/ponte.js
   async function invoke(cmd, args) {
@@ -497,7 +515,15 @@
     // A4/A5 nascem DESLIGADOS: um muda a aparência de toda a tela, o outro
     // gasta CPU e manda recibo de "ouvida" sem o usuário pedir.
     nsfwBlur: false,
-    autoTranscribe: false
+    autoTranscribe: false,
+    // Os quatro de IA nascem LIGADOS, e isso não contradiz o parágrafo acima:
+    // ligado, cada um deles acrescenta uma entrada no menu e nada mais. Não há
+    // varredura, observador nem chamada de IA sem um clique — o custo de
+    // deixá-los ligados é uma linha no dock, não uma conta no provedor.
+    translate: true,
+    ocr: true,
+    scamDetect: true,
+    dailyDigest: true
   };
   async function applyAll() {
     try {
@@ -2204,6 +2230,32 @@
       return t ? `${ehDeSaida(r) ? "Voc\xEA" : "Contato"}: ${t}` : null;
     }).filter(Boolean).join("\n");
   }
+  function cfgIa() {
+    const c = settings && settings.ia || {};
+    const num = (v, padrao, min, max) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= min && n <= max ? Math.round(n) : padrao;
+    };
+    const idioma = String(c.traduzirPara || "").trim();
+    return {
+      traduzirPara: idioma ? idioma.slice(0, 40) : "portugu\xEAs do Brasil",
+      digestHoras: num(c.digestHoras, 12, 1, 48),
+      digestMaxConversas: num(c.digestMaxConversas, 40, 1, 200),
+      digestIncluirAberta: c.digestIncluirAberta !== false
+    };
+  }
+  async function imagemEmBase64(img) {
+    const src = img && img.src || "";
+    if (!src) throw new Error("n\xE3o achei os bytes desta imagem na p\xE1gina.");
+    const blob = await (await fetch(src)).blob();
+    const b64 = await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result).split(",")[1]);
+      fr.onerror = () => reject(new Error("n\xE3o consegui ler os bytes da imagem."));
+      fr.readAsDataURL(blob);
+    });
+    return { b64, mediaType: blob.type || "image/jpeg" };
+  }
 
   // src-tauri/injection/src/modulos/resumir.js
   function registrarResumir() {
@@ -2541,6 +2593,95 @@
     });
   }
 
+  // src-tauri/injection/src/lista.js
+  function linhasDaLista() {
+    const pane = document.querySelector("#pane-side");
+    if (!pane) return [];
+    try {
+      return [...pane.querySelectorAll('[role="listitem"], [role="row"]')];
+    } catch (_) {
+      return [];
+    }
+  }
+  function nomeDaLinha(row) {
+    const t = row.querySelector('[data-testid="cell-frame-title"] span[title]') || row.querySelector('[role="gridcell"][aria-colindex="2"] span[title]');
+    return t ? (t.getAttribute("title") || t.textContent || "").trim() : "";
+  }
+  function horaDaLinha(row) {
+    const el = row.querySelector('[data-testid="cell-frame-primary-detail"]') || row.querySelector('[role="gridcell"][aria-colindex="2"] [data-testid*="detail"]');
+    const t = el ? (el.textContent || "").trim() : "";
+    return t.length <= 24 ? t : "";
+  }
+  function rotuloIndicaNovo(rotulo, desde, agora) {
+    const t = String(rotulo || "").trim();
+    if (!t) return null;
+    const m = t.match(/^(\d{1,2}):(\d{2})\s*([apAP])\.?\s*[mM]?\.?$|^(\d{1,2}):(\d{2})$/);
+    if (!m) return false;
+    const h0 = m[1] !== void 0 ? +m[1] : +m[4];
+    const min = m[2] !== void 0 ? +m[2] : +m[5];
+    if (!(h0 >= 0 && h0 <= 23 && min >= 0 && min <= 59)) return null;
+    let h = h0;
+    const suf = (m[3] || "").toLowerCase();
+    if (suf === "p" && h < 12) h += 12;
+    if (suf === "a" && h === 12) h = 0;
+    const dDesde = new Date(desde);
+    const dAgora = new Date(agora);
+    if (dDesde.toDateString() !== dAgora.toDateString()) return true;
+    const alvo = new Date(agora);
+    alvo.setHours(h, min, 0, 0);
+    return alvo.getTime() >= desde - 9e4;
+  }
+  function limparTexto(s) {
+    return (s || "").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim();
+  }
+  function previaDaLinha(row) {
+    const sec = row.querySelector('[data-testid="cell-frame-secondary"]');
+    const alvo = sec && (sec.querySelector("span[title]") || sec.querySelector("span")) || null;
+    if (alvo) return limparTexto(alvo.getAttribute("title") || alvo.textContent);
+    const spans = [...row.querySelectorAll("span")];
+    return spans.length > 1 ? limparTexto(spans[spans.length - 1].textContent) : "";
+  }
+  function textoSemIcone(n) {
+    if (!n) return "";
+    if (n.nodeType !== 1) return n.textContent || "";
+    try {
+      const c = n.cloneNode(true);
+      c.querySelectorAll('svg, [aria-hidden="true"], [data-testid="chat-msg-symbol"]').forEach(
+        (x) => x.remove()
+      );
+      return c.textContent || "";
+    } catch (_) {
+      return n.textContent || "";
+    }
+  }
+  function autorDaLinha(row) {
+    try {
+      const sec = row.querySelector('[data-testid="cell-frame-secondary"]');
+      if (!sec) return "";
+      const host = sec.querySelector('[data-testid="last-msg-status"]');
+      if (!host) return "";
+      const kids = [...host.childNodes];
+      let sep = -1;
+      for (let i = 0; i < kids.length && i < 5; i++) {
+        const t = textoSemIcone(kids[i]).replace(/[\s\u00a0]/g, "");
+        if (t === ":") {
+          sep = i;
+          break;
+        }
+        if (t.length > 48) break;
+      }
+      if (sep < 1) return "";
+      return limparTexto(kids.slice(0, sep).map(textoSemIcone).join("")).replace(/:$/, "").trim().slice(0, 60);
+    } catch (_) {
+      return "";
+    }
+  }
+  function linhaSelecionada() {
+    return linhasDaLista().find(
+      (r) => r.querySelector('[aria-selected="true"]') || r.getAttribute("aria-selected") === "true"
+    ) || null;
+  }
+
   // src-tauri/injection/src/modulos/notificacoes.js
   function registrarNotificacoes() {
     reg({
@@ -2619,10 +2760,6 @@
           }
           return "";
         }
-        function nomeDaLinha(row) {
-          const t = row.querySelector('[data-testid="cell-frame-title"] span[title]') || row.querySelector('[role="gridcell"][aria-colindex="2"] span[title]');
-          return t ? (t.getAttribute("title") || t.textContent || "").trim() : "";
-        }
         const SINAIS_MUDO = [
           '[data-testid*="mute" i]',
           '[data-icon*="mute" i]',
@@ -2686,11 +2823,6 @@
           }
           return self._mudos.get(chatId) === true;
         }
-        function horaDaLinha(row) {
-          const el = row.querySelector('[data-testid="cell-frame-primary-detail"]') || row.querySelector('[role="gridcell"][aria-colindex="2"] [data-testid*="detail"]');
-          const t = el ? (el.textContent || "").trim() : "";
-          return t.length <= 24 ? t : "";
-        }
         function relogioDaLinha(row) {
           try {
             const el = row.querySelector('[data-testid="cell-frame-primary-detail"]') || row.querySelector('[role="gridcell"][aria-colindex="2"] [data-testid*="detail"]');
@@ -2707,70 +2839,6 @@
           }
           return "";
         }
-        function rotuloIndicaNovo(rotulo, desde, agora) {
-          const t = String(rotulo || "").trim();
-          if (!t) return null;
-          const m = t.match(/^(\d{1,2}):(\d{2})\s*([apAP])\.?\s*[mM]?\.?$|^(\d{1,2}):(\d{2})$/);
-          if (!m) return false;
-          const h0 = m[1] !== void 0 ? +m[1] : +m[4];
-          const min = m[2] !== void 0 ? +m[2] : +m[5];
-          if (!(h0 >= 0 && h0 <= 23 && min >= 0 && min <= 59)) return null;
-          let h = h0;
-          const suf = (m[3] || "").toLowerCase();
-          if (suf === "p" && h < 12) h += 12;
-          if (suf === "a" && h === 12) h = 0;
-          const dDesde = new Date(desde);
-          const dAgora = new Date(agora);
-          if (dDesde.toDateString() !== dAgora.toDateString()) return true;
-          const alvo = new Date(agora);
-          alvo.setHours(h, min, 0, 0);
-          return alvo.getTime() >= desde - 9e4;
-        }
-        function limparTexto(s) {
-          return (s || "").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim();
-        }
-        function previaDaLinha(row) {
-          const sec = row.querySelector('[data-testid="cell-frame-secondary"]');
-          const alvo = sec && (sec.querySelector("span[title]") || sec.querySelector("span")) || null;
-          if (alvo) return limparTexto(alvo.getAttribute("title") || alvo.textContent);
-          const spans = [...row.querySelectorAll("span")];
-          return spans.length > 1 ? limparTexto(spans[spans.length - 1].textContent) : "";
-        }
-        function textoSemIcone(n) {
-          if (!n) return "";
-          if (n.nodeType !== 1) return n.textContent || "";
-          try {
-            const c = n.cloneNode(true);
-            c.querySelectorAll('svg, [aria-hidden="true"], [data-testid="chat-msg-symbol"]').forEach(
-              (x) => x.remove()
-            );
-            return c.textContent || "";
-          } catch (_) {
-            return n.textContent || "";
-          }
-        }
-        function autorDaLinha(row) {
-          try {
-            const sec = row.querySelector('[data-testid="cell-frame-secondary"]');
-            if (!sec) return "";
-            const host = sec.querySelector('[data-testid="last-msg-status"]');
-            if (!host) return "";
-            const kids = [...host.childNodes];
-            let sep = -1;
-            for (let i = 0; i < kids.length && i < 5; i++) {
-              const t = textoSemIcone(kids[i]).replace(/[\s\u00a0]/g, "");
-              if (t === ":") {
-                sep = i;
-                break;
-              }
-              if (t.length > 48) break;
-            }
-            if (sep < 1) return "";
-            return limparTexto(kids.slice(0, sep).map(textoSemIcone).join("")).replace(/:$/, "").trim().slice(0, 60);
-          } catch (_) {
-            return "";
-          }
-        }
         const SINAIS_MENCAO = [
           '[data-icon*="mention" i]',
           '[data-testid*="mention" i]',
@@ -2785,9 +2853,8 @@
           return algumSinal(row, SINAIS_MENCAO, RE_ICONE_MENCAO);
         }
         async function scan() {
-          const pane = document.querySelector("#pane-side");
-          if (!pane) return;
-          const rows = pane.querySelectorAll('[role="listitem"], [role="row"]');
+          const rows = linhasDaLista();
+          if (!rows.length) return;
           for (const row of rows) {
             const sender = nomeDaLinha(row);
             if (!sender) continue;
@@ -2874,10 +2941,7 @@
         scan();
         this._linhaDoChat = function(chatId) {
           if (!chatId) return null;
-          const pane = document.querySelector("#pane-side");
-          if (!pane) return null;
-          const rows = [...pane.querySelectorAll('[role="listitem"], [role="row"]')];
-          return rows.find((r) => chatIdDaLinha(r) === chatId) || null;
+          return linhasDaLista().find((r) => chatIdDaLinha(r) === chatId) || null;
         };
         const ABRIR_TENTATIVAS = 30;
         const ABRIR_INTERVALO = 400;
@@ -2887,11 +2951,7 @@
           cliqueReal(linha.querySelector('[role="gridcell"][aria-colindex="2"]') || linha);
         }
         this._chatAberto = function() {
-          const pane = document.querySelector("#pane-side");
-          if (!pane) return "";
-          const sel = [...pane.querySelectorAll('[role="listitem"], [role="row"]')].find(
-            (r) => r.querySelector('[aria-selected="true"]') || r.getAttribute("aria-selected") === "true"
-          );
+          const sel = linhaSelecionada();
           return sel ? chatIdDaLinha(sel) : "";
         };
         this._abrirConversa = function(chatId, tentativa) {
@@ -3000,6 +3060,141 @@
     });
   }
 
+  // src-tauri/injection/src/modulos/golpe.js
+  var SISTEMA = "Voc\xEA ajuda algu\xE9m a avaliar uma mensagem recebida no WhatsApp. Voc\xEA N\xC3O abre links nem consulta nada: s\xF3 l\xEA o texto. Responda em portugu\xEAs do Brasil, em no m\xE1ximo 6 linhas curtas, neste formato:\nSinais de alerta: (lista curta, ou 'nenhum evidente')\nSinais de que pode ser leg\xEDtima: (lista curta, ou 'nenhum evidente')\nO que n\xE3o d\xE1 para saber s\xF3 pelo texto: (uma linha)\nNUNCA declare que algo \xE9 seguro nem garanta que \xE9 golpe. Nunca pe\xE7a dados da pessoa.";
+  var AVISO_TOPO = "OPINI\xC3O DE UM MODELO DE IA \u2014 n\xE3o \xE9 veredito.\nEle leu s\xF3 este texto: n\xE3o abriu o link, n\xE3o checou o n\xFAmero, n\xE3o conhece o remetente.\nErra nos dois sentidos. Na d\xFAvida, confirme por outro canal que voc\xEA j\xE1 usava antes.\n----------------------------------------";
+  var AVISO_RODAPE = "----------------------------------------\nNenhum link foi aberto para produzir esta an\xE1lise.\nRegra que vale mais do que a resposta acima: ningu\xE9m leg\xEDtimo pede c\xF3digo de\nverifica\xE7\xE3o, senha ou PIX por mensagem, com pressa.";
+  async function analisarGolpe(texto) {
+    return await ai(SISTEMA, "Mensagem recebida:\n\n" + texto);
+  }
+  async function checarGolpe(texto) {
+    if (!texto || !texto.trim()) throw new Error("n\xE3o h\xE1 texto nesta mensagem para analisar.");
+    showPanel("Parece golpe? \u2014 opini\xE3o da IA", AVISO_TOPO + "\n\nAnalisando\u2026");
+    const r = await analisarGolpe(texto);
+    showPanel("Parece golpe? \u2014 opini\xE3o da IA", AVISO_TOPO + "\n\n" + r + "\n\n" + AVISO_RODAPE);
+    return r;
+  }
+  function registrarGolpe() {
+    reg({
+      id: "scamDetect",
+      apply() {
+        addAct(ensureDock(), "zl-golpe", "\u{1F6E1}", "Checar a \xFAltima recebida", "", async () => {
+          const b = ultimaBolha((x) => !ehDeSaida(x) && !!textoDaBolha(x));
+          if (!b) {
+            return showPanel(
+              "Parece golpe? \u2014 opini\xE3o da IA",
+              "N\xE3o achei nenhuma mensagem recebida com texto na conversa aberta."
+            );
+          }
+          try {
+            b.scrollIntoView({ block: "center" });
+          } catch (_) {
+          }
+          try {
+            await checarGolpe(textoDaBolha(b));
+          } catch (e) {
+            showPanel("Parece golpe? \u2014 opini\xE3o da IA", "Falhou: " + (e && e.message || e));
+          }
+        });
+      },
+      revert() {
+        dropAct("zl-golpe");
+      }
+    });
+  }
+
+  // src-tauri/injection/src/modulos/ocr.js
+  var SISTEMA2 = "Voc\xEA transcreve todo o texto vis\xEDvel de uma imagem, preservando a ordem e as quebras de linha. Responda s\xF3 com o texto, sem coment\xE1rios. Se n\xE3o houver texto nenhum, responda exatamente: (sem texto na imagem)";
+  async function textoDaImagem(img) {
+    const { b64, mediaType } = await imagemEmBase64(img);
+    return await ai(SISTEMA2, "Extraia o texto desta imagem.", { image: b64, mediaType });
+  }
+  async function ocrDaBolha(bolha) {
+    const img = imagemDaBolha(bolha);
+    if (!img) throw new Error("esta mensagem n\xE3o tem imagem.");
+    showPanel("Texto da imagem", "Lendo\u2026");
+    const t = await textoDaImagem(img);
+    showPanel("Texto da imagem", t);
+    mostrarTranscricaoNaBolha(bolha, t, "\u{1F524} ");
+    return t;
+  }
+  function registrarOcr() {
+    reg({
+      id: "ocr",
+      apply() {
+        addAct(ensureDock(), "zl-ocr", "\u{1F524}", "Ler texto da \xFAltima imagem", "", async () => {
+          const b = ultimaBolha((x) => !!imagemDaBolha(x));
+          if (!b) {
+            return showPanel(
+              "Texto da imagem",
+              "N\xE3o achei nenhuma imagem na conversa aberta.\n\nO WhatsApp s\xF3 decifra a m\xEDdia que est\xE1 na tela: role at\xE9 a imagem antes de pedir."
+            );
+          }
+          try {
+            b.scrollIntoView({ block: "center" });
+          } catch (_) {
+          }
+          try {
+            await ocrDaBolha(b);
+          } catch (e) {
+            showPanel("Texto da imagem", "Falhou: " + (e && e.message || e));
+          }
+        });
+      },
+      revert() {
+        dropAct("zl-ocr");
+      }
+    });
+  }
+
+  // src-tauri/injection/src/modulos/traduzir.js
+  var IDIOMA_PADRAO = "portugu\xEAs do Brasil";
+  async function traduzir(texto, idioma) {
+    const alvo = idioma || cfgIa().traduzirPara;
+    return await ai(
+      `Voc\xEA traduz mensagens de WhatsApp para ${alvo}. Responda S\xD3 com a tradu\xE7\xE3o, sem aspas, sem coment\xE1rios e sem explicar. Se a mensagem j\xE1 estiver nesse idioma, responda com ela mesma.`,
+      texto
+    );
+  }
+  async function traduzirBolha(bolha) {
+    const texto = textoDaBolha(bolha);
+    if (!texto) throw new Error("esta mensagem n\xE3o tem texto para traduzir.");
+    const alvo = cfgIa().traduzirPara;
+    showPanel("Tradu\xE7\xE3o \u2192 " + alvo, "Traduzindo\u2026");
+    const t = await traduzir(texto, alvo);
+    showPanel("Tradu\xE7\xE3o \u2192 " + alvo, t);
+    mostrarTranscricaoNaBolha(bolha, t, "\u{1F310} ");
+    return t;
+  }
+  function registrarTraduzir() {
+    reg({
+      id: "translate",
+      apply() {
+        addAct(ensureDock(), "zl-tr-lang", "\u{1F310}", "Traduzir a \xFAltima recebida", "", async () => {
+          const b = ultimaBolha((x) => !ehDeSaida(x) && !!textoDaBolha(x));
+          if (!b) {
+            return showPanel(
+              "Tradu\xE7\xE3o",
+              "N\xE3o achei nenhuma mensagem recebida com texto na conversa aberta.\n\nAbra a conversa e role at\xE9 a mensagem \u2014 s\xF3 o que est\xE1 na tela pode ser lido."
+            );
+          }
+          try {
+            b.scrollIntoView({ block: "center" });
+          } catch (_) {
+          }
+          try {
+            await traduzirBolha(b);
+          } catch (e) {
+            showPanel("Tradu\xE7\xE3o", "Falhou: " + (e && e.message || e));
+          }
+        });
+      },
+      revert() {
+        dropAct("zl-tr-lang");
+      }
+    });
+  }
+
   // src-tauri/injection/src/modulos/menu-contexto.js
   function registrarMenuContexto() {
     reg({
@@ -3061,7 +3256,7 @@
           ev.stopPropagation();
           const texto = textoDaBolha(bolha);
           const audio = ehBolhaDeAudio(bolha);
-          const img = bolha.querySelector('img[src^="blob:"], img[src^="data:"]');
+          const img = imagemDaBolha(bolha);
           const video = bolha.querySelector('video[src^="blob:"], video source[src^="blob:"]');
           const itens = [];
           if (ehApagada(bolha)) {
@@ -3114,25 +3309,13 @@
             ]);
           }
           if (img) {
-            itens.push([
-              "\u{1F524}",
-              "Extrair texto da imagem",
-              guarded(async () => {
-                showPanel("Texto da imagem", "Lendo\u2026");
-                const b = await (await fetch(img.src)).blob();
-                const b64 = await new Promise((r) => {
-                  const fr = new FileReader();
-                  fr.onload = () => r(String(fr.result).split(",")[1]);
-                  fr.readAsDataURL(b);
-                });
-                const t = await ai(
-                  "Voc\xEA transcreve todo o texto vis\xEDvel de uma imagem. Responda s\xF3 com o texto, sem coment\xE1rios.",
-                  "Extraia o texto desta imagem.",
-                  { image: b64, mediaType: b.type || "image/jpeg" }
-                );
-                showPanel("Texto da imagem", t);
-              }, "OCR")
-            ]);
+            if (on("ocr")) {
+              itens.push([
+                "\u{1F524}",
+                "Extrair texto da imagem",
+                guarded(() => ocrDaBolha(bolha), "Texto da imagem")
+              ]);
+            }
             itens.push([
               "\u{1F4BE}",
               "Salvar imagem\u2026",
@@ -3159,18 +3342,13 @@
               () => navigator.clipboard.writeText(texto).catch(() => {
               })
             ]);
-            itens.push([
-              "\u{1F310}",
-              "Traduzir para portugu\xEAs",
-              guarded(async () => {
-                showPanel("Tradu\xE7\xE3o", "Traduzindo\u2026");
-                const t = await ai(
-                  "Voc\xEA traduz mensagens para portugu\xEAs do Brasil. Responda s\xF3 com a tradu\xE7\xE3o.",
-                  texto
-                );
-                showPanel("Tradu\xE7\xE3o", t);
-              }, "Tradu\xE7\xE3o")
-            ]);
+            if (on("translate")) {
+              itens.push([
+                "\u{1F310}",
+                "Traduzir para " + cfgIa().traduzirPara,
+                guarded(() => traduzirBolha(bolha), "Tradu\xE7\xE3o")
+              ]);
+            }
             itens.push([
               "\u270D",
               "Responder com sugest\xE3o da IA",
@@ -3190,18 +3368,13 @@
                 } else showPanel("Rascunho", r);
               }, "Sugest\xE3o")
             ]);
-            itens.push([
-              "\u{1F6E1}",
-              "Isso parece golpe?",
-              guarded(async () => {
-                showPanel("An\xE1lise", "Analisando\u2026");
-                const t = await ai(
-                  "Voc\xEA avalia se uma mensagem \xE9 golpe, phishing ou fraude. Responda em portugu\xEAs do Brasil, em at\xE9 4 linhas: veredito e os sinais que o justificam.",
-                  texto
-                );
-                showPanel("An\xE1lise", t);
-              }, "An\xE1lise")
-            ]);
+            if (on("scamDetect")) {
+              itens.push([
+                "\u{1F6E1}",
+                "Isso parece golpe?",
+                guarded(() => checarGolpe(texto), "Parece golpe? \u2014 opini\xE3o da IA")
+              ]);
+            }
           }
           if (!itens.length) return;
           const titulo = texto ? texto.slice(0, 40) : audio ? "Mensagem de voz" : "M\xEDdia";
@@ -3214,6 +3387,139 @@
         if (this._close) this._close();
         dropCss("zl-ctx-style");
         this._on = false;
+      }
+    });
+  }
+
+  // src-tauri/injection/src/modulos/resumo-diario.js
+  var PREVIA_MAX = 160;
+  var ABERTA_MAX = 4e3;
+  function montarEscopo() {
+    const cfg = cfgIa();
+    const agora = Date.now();
+    const desde = agora - cfg.digestHoras * 3600 * 1e3;
+    const todas = linhasDaLista();
+    const dentro = [];
+    for (const row of todas) {
+      const nome = nomeDaLinha(row);
+      if (!nome) continue;
+      if (rotuloIndicaNovo(horaDaLinha(row), desde, agora) !== true) continue;
+      const previa = previaDaLinha(row);
+      if (!previa) continue;
+      const autor = autorDaLinha(row);
+      dentro.push({
+        nome,
+        hora: horaDaLinha(row),
+        autor,
+        previa: previa.slice(0, PREVIA_MAX)
+      });
+      if (dentro.length >= cfg.digestMaxConversas) break;
+    }
+    let aberta = null;
+    if (cfg.digestIncluirAberta) {
+      const texto = collectVisibleMessages();
+      if (texto) {
+        const linha = linhaSelecionada();
+        aberta = {
+          nome: linha && nomeDaLinha(linha) || "conversa aberta",
+          texto: texto.length > ABERTA_MAX ? texto.slice(-ABERTA_MAX) : texto,
+          mensagens: texto.split("\n").length,
+          cortado: texto.length > ABERTA_MAX
+        };
+      }
+    }
+    const partes = [];
+    if (dentro.length) {
+      partes.push(
+        "\xDALTIMA MENSAGEM DE CADA CONVERSA COM MOVIMENTO NAS \xDALTIMAS " + cfg.digestHoras + "H (s\xF3 a pr\xE9via que a lista mostra):"
+      );
+      dentro.forEach((c) => {
+        partes.push(
+          "- [" + (c.hora || "?") + "] " + c.nome + ": " + (c.autor ? c.autor + " \u2014 " : "") + c.previa
+        );
+      });
+    }
+    if (aberta) {
+      partes.push("");
+      partes.push(
+        "CONVERSA ABERTA (" + aberta.nome + ") \u2014 mensagens vis\xEDveis" + (aberta.cortado ? ", cortadas nas mais recentes" : "") + ":"
+      );
+      partes.push(aberta.texto);
+    }
+    return {
+      horas: cfg.digestHoras,
+      linhasCarregadas: todas.length,
+      conversas: dentro,
+      aberta,
+      limite: cfg.digestMaxConversas,
+      payload: partes.join("\n")
+    };
+  }
+  async function resumirEscopo(escopo) {
+    return await ai(
+      "Voc\xEA resume, em portugu\xEAs do Brasil, o movimento do dia no WhatsApp de algu\xE9m. Escreva no m\xE1ximo 10 linhas, agrupadas por conversa, come\xE7ando pelo que parece pedir resposta. Destaque perguntas em aberto, combinados e prazos. Voc\xEA recebe, na maior parte, apenas a PR\xC9VIA da \xFAltima mensagem de cada conversa: n\xE3o invente o que n\xE3o est\xE1 escrito e diga 'sem contexto' quando a pr\xE9via n\xE3o permitir concluir nada.",
+      "Resuma o dia:\n\n" + escopo.payload
+    );
+  }
+  function textoDoEscopo(e) {
+    const l = [];
+    l.push("Janela: \xFAltimas " + e.horas + " h.");
+    l.push(
+      "Conversas com movimento na janela: " + e.conversas.length + (e.conversas.length >= e.limite ? " (teto de " + e.limite + " atingido)" : "")
+    );
+    l.push(
+      "Linhas carregadas na lista agora: " + e.linhasCarregadas + " \u2014 a lista do WhatsApp \xE9 virtualizada e o ZapLite n\xE3o a rola sozinho, ent\xE3o conversas ainda n\xE3o renderizadas ficam de fora."
+    );
+    l.push(
+      e.aberta ? "Conversa aberta: " + e.aberta.nome + " (" + e.aberta.mensagens + " mensagens vis\xEDveis)" : "Conversa aberta: nenhuma (ou sem mensagens vis\xEDveis)."
+    );
+    l.push("");
+    if (!e.conversas.length && !e.aberta) {
+      l.push("N\xE3o h\xE1 nada para resumir: nenhuma conversa carregada tem r\xF3tulo de hora dentro da janela.");
+      return l.join("\n");
+    }
+    l.push("Entram no resumo:");
+    e.conversas.forEach((c) => l.push("  \xB7 " + c.nome + "  [" + (c.hora || "?") + "]"));
+    l.push("");
+    l.push("Nada foi enviado a modelo nenhum ainda. S\xE3o " + e.payload.length + " caracteres, UMA chamada.");
+    return l.join("\n");
+  }
+  function registrarResumoDiario() {
+    reg({
+      id: "dailyDigest",
+      apply() {
+        addAct(ensureDock(), "zl-digest", "\u{1F5D3}", "Resumo do dia", "", () => {
+          let e;
+          try {
+            e = montarEscopo();
+          } catch (err) {
+            return showPanel("Resumo do dia", "Falhou ao montar o escopo: " + (err && err.message || err));
+          }
+          const acoes = [];
+          if (e.conversas.length || e.aberta) {
+            acoes.push([
+              "Ver o texto exato",
+              () => showPanel("Resumo do dia \u2014 o que seria enviado", e.payload, [
+                ["Voltar", () => showPanel("Resumo do dia", textoDoEscopo(e), acoes)]
+              ])
+            ]);
+            acoes.push([
+              "Resumir (1 chamada)",
+              async () => {
+                showPanel("Resumo do dia", "Resumindo " + e.conversas.length + " conversas\u2026");
+                try {
+                  showPanel("Resumo do dia", await resumirEscopo(e));
+                } catch (err) {
+                  showPanel("Resumo do dia", "Falhou: " + (err && err.message || err));
+                }
+              }
+            ]);
+          }
+          showPanel("Resumo do dia", textoDoEscopo(e), acoes);
+        });
+      },
+      revert() {
+        dropAct("zl-digest");
       }
     });
   }
@@ -3235,6 +3541,10 @@
   registrarAutoTranscrever();
   registrarNotificacoes();
   registrarMenuContexto();
+  registrarTraduzir();
+  registrarOcr();
+  registrarGolpe();
+  registrarResumoDiario();
   window.__ZAPLITE_RELOAD__ = applyAll;
   boot();
 })();

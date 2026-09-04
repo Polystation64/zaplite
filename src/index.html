@@ -429,6 +429,38 @@
         <label class="k">Tom das respostas sugeridas</label>
         <input type="text" id="aiTone" placeholder="direto, amigável e claro" />
       </div>
+
+      <div class="field">
+        <label class="k">Tradução — idioma de destino</label>
+        <input type="text" id="iaTraduzirPara" placeholder="português do Brasil" />
+        <div class="hint">
+          Vale para o item “Traduzir para…” do botão direito e para “Traduzir a última recebida”
+          no menu do ZapLite. Escreva o idioma como você falaria (<code>inglês</code>,
+          <code>español</code>, <code>日本語</code>). Nada é traduzido sozinho: é sempre um clique,
+          uma mensagem, uma chamada.
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="k">Resumo do dia — janela de tempo</label>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <input type="number" id="iaDigestHoras" min="1" max="48" step="1"
+                 style="width:110px" placeholder="12" />
+          <span class="hint" style="margin:0">horas para trás (1 a 48)</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
+          <input type="checkbox" id="iaDigestAberta" />
+          <label for="iaDigestAberta" class="hint" style="margin:0">
+            incluir as mensagens visíveis da conversa aberta
+          </label>
+        </div>
+        <div class="hint">
+          O resumo NÃO abre conversa nenhuma — abrir marcaria como lida e mandaria recibo de
+          leitura para o outro lado. Ele lê a prévia que a lista de conversas já mostra, e só das
+          conversas carregadas (a lista do WhatsApp é virtualizada). O painel mostra quantas
+          conversas entraram e deixa ver o texto exato antes de qualquer envio.
+        </div>
+      </div>
       <div class="field">
         <label class="k">Transcrição local (Whisper) — estado</label>
         <div id="wStatus" class="hint" style="margin-top:0">verificando…</div>
@@ -820,11 +852,11 @@
     {id:"advSearch",   n:10, t:"Busca avançada", d:"Filtra por data, remetente e tipo de mídia.", tag:""},
     {id:"transcribe",  n:11, t:"Transcrever áudio", d:"Whisper local converte áudios em texto, offline.", tag:"local"},
     {id:"summarize",   n:12, t:"Resumir conversa", d:"Resumo em tópicos das mensagens visíveis.", tag:"ia"},
-    {id:"translate",   n:13, t:"Tradução automática", d:"Traduz mensagens recebidas.", tag:"ia"},
+    {id:"translate",   n:13, t:"Tradução sob demanda", d:"Traduz UMA mensagem recebida quando você pede: botão direito na mensagem, ou “Traduzir a última recebida” no menu do ZapLite. Idioma de destino configurável na aba IA. Não existe modo automático de propósito — traduzir tudo o que chega é uma chamada de IA por mensagem, paga, para textos que quase sempre já estão no seu idioma.", tag:"ia"},
     {id:"draftReply",  n:14, t:"Sugerir resposta", d:"Rascunho no seu tom, você aprova antes de enviar.", tag:"ia"},
-    {id:"ocr",         n:15, t:"OCR de imagens", d:"Extrai texto de prints e fotos.", tag:"ia"},
-    {id:"scamDetect",  n:16, t:"Detector de golpes", d:"Analisa links e mensagens suspeitas.", tag:"ia"},
-    {id:"dailyDigest", n:17, t:"Resumo diário", d:"O que rolou nos grupos hoje, num painel.", tag:"ia"},
+    {id:"ocr",         n:15, t:"OCR de imagens", d:"Extrai o texto de um print ou foto que já está na conversa, sob demanda. Usa o “Modelo para imagem” configurado aqui na aba IA — apelido <code>auto/*</code> descarta a imagem, e nesse caso a chamada falha com a explicação em vez de responder errado.", tag:"ia"},
+    {id:"scamDetect",  n:16, t:"Detector de golpes", d:"Pede a um modelo os sinais de golpe de UMA mensagem, quando você clica. O resultado é opinião de IA, não veredito: ele não abre o link nem conhece o remetente, e o painel diz isso em cima e embaixo da resposta.", tag:"ia"},
+    {id:"dailyDigest", n:17, t:"Resumo do dia", d:"O que se moveu nas conversas carregadas na janela de tempo que você escolher, num painel. Sem abrir conversa nenhuma (abrir marcaria como lida e mandaria recibo de leitura): usa a prévia da lista, mais as mensagens visíveis da conversa aberta. Mostra o escopo e o texto exato ANTES de enviar; o envio é uma chamada só, no segundo clique.", tag:"ia"},
     {id:"stickerMaker",n:18, t:"Criador de figurinhas", d:"Remove fundo, corta, texto e exporta webp.", tag:""},
     {id:"imgToSticker",n:19, t:"Imagem → figurinha", d:"Vira figurinha qualquer imagem recebida.", tag:""},
     {id:"bulkDownload",n:20, t:"Download em massa", d:"Baixa fotos e vídeos de um grupo por período.", tag:""},
@@ -857,6 +889,11 @@
     "unsavedSend","antiDelete","transcribe","summarize","draftReply","audioSpeed",
     "alwaysOnTop","theme","declutter","privacyBlur","nsfwBlur","autoTranscribe",
     "smartNotify","contextMenu",
+    // Os quatro de IA sob demanda: `modulos/traduzir.js`, `modulos/ocr.js`,
+    // `modulos/golpe.js` e `modulos/resumo-diario.js`, cada um com o seu
+    // `reg({ id: … })` e a sua chamada em `injection/src/main.js`. Nenhum
+    // deles roda sozinho: ligado, cada um acrescenta uma entrada de menu.
+    "translate","ocr","scamDetect","dailyDigest",
   ]);
 
   const PALETTE = ["#22d3aa","#7c3aed","#0ea5e9","#f43f5e","#f59e0b","#10b981","#e879f9","#f8fafc"];
@@ -988,7 +1025,13 @@
       label:"Compatível com OpenAI", keyField:"compatibleKey", needsKey:false, prefix:"opcional",
       onde:'Chave opcional: servidor local (Ollama, LM Studio) não pede nenhuma; Groq e DeepSeek pedem.',
       models:["llama3.1","qwen2.5:7b","llama-3.3-70b-versatile","deepseek-chat"],
-      listaModelos:true,
+      // `usaVisao` sem `visaoPadrao`: o campo APARECE (senão não há como
+      // configurar visão neste modo) mas nasce vazio, porque não temos como
+      // adivinhar o catálogo de um endpoint qualquer. Ele deixou de ser
+      // exclusivo do OmniRoute porque apontar este modo para a porta do
+      // OmniRoute é configuração legítima — e era exatamente ela que ficava
+      // sem caminho de visão, mandando toda imagem para o apelido `auto/*`.
+      listaModelos:true, usaVisao:true,
       baseHint:'Ollama <code>http://localhost:11434/v1</code> · LM Studio <code>http://localhost:1234/v1</code> · '+
                'Groq <code>https://api.groq.com/openai/v1</code> · DeepSeek <code>https://api.deepseek.com/v1</code>. '+
                'Servidor local costuma dispensar chave — deixe o campo de chave em branco.'
@@ -1033,12 +1076,16 @@
       "Sugestões para "+P.label+": "+P.models.join(" · ");
     document.getElementById("aiModelsBtn").style.display = P.listaModelos ? "" : "none";
 
-    // Modelo de imagem: só o OmniRoute troca de modelo por causa de imagem.
+    // Modelo de imagem. `visaoPadrao` só existe onde sabemos que id concreto
+    // funciona (OmniRoute); nos outros o campo aparece vazio, para preencher.
     document.getElementById("aiVisionField").style.display = P.usaVisao ? "" : "none";
-    if(P.usaVisao && !S.aiVisionModel) S.aiVisionModel = P.visaoPadrao;
+    if(P.usaVisao && !S.aiVisionModel && P.visaoPadrao) S.aiVisionModel = P.visaoPadrao;
     document.getElementById("aiVisionModel").value = P.usaVisao ? (S.aiVisionModel||"") : "";
 
     document.getElementById("aiTone").value = S.aiTone||"";
+    document.getElementById("iaTraduzirPara").value = (S.ia && S.ia.traduzirPara) || "";
+    document.getElementById("iaDigestHoras").value = (S.ia && S.ia.digestHoras) || 12;
+    document.getElementById("iaDigestAberta").checked = !(S.ia && S.ia.digestIncluirAberta === false);
     document.getElementById("whisperModel").value = S.whisperModel||"";
     document.getElementById("whisperCli").value = S.whisperCli||"";
     document.getElementById("autoMaxSeg").value = (S.transcricao && S.transcricao.autoMaxSeg) || 180;
@@ -1083,6 +1130,21 @@
   let aiPendente = false;
   function marcarAiPendente(){ aiPendente = true; refreshAiStatus(); }
 
+  /* O estado do caminho de IMAGEM (OCR e detector de golpes) fica ao lado do
+     de texto, porque um pode estar de pé com o outro quebrado. O caso ruim é
+     mudo por natureza: com o campo vazio a imagem sai no modelo de texto, e se
+     ele for um apelido `auto/*` o roteador DESCARTA a imagem e responde
+     educadamente que não recebeu nenhuma. O `ai_complete` recusa antes de
+     chegar lá; aqui o aviso aparece antes mesmo de alguém tentar. */
+  function visaoLinha(st){
+    if(st.visionModel) return `<br>imagem (OCR, golpe) via <code>${st.visionModel}</code>`;
+    if(String(st.model||"").startsWith("auto/"))
+      return `<br><b style="color:#f59e0b">imagem sem caminho</b> — “Modelo para imagem” está vazio, `
+           + `então a imagem iria no apelido <code>${st.model}</code>, que a descarta. `
+           + `Preencha o campo acima com um id concreto de modelo com visão.`;
+    return `<br>imagem (OCR, golpe) via <code>${st.model}</code> (o mesmo do texto)`;
+  }
+
   async function refreshAiStatus(){
     const el = document.getElementById("aiStatus");
     let st; try{ st = await invoke("ai_status"); }catch(e){ el.textContent="não consegui ler o estado: "+e; return; }
@@ -1093,7 +1155,7 @@
       el.innerHTML = `<b style="color:var(--accent)">conectado</b> — ${st.providerLabel} · modelo <code>${st.model}</code>`
         + (st.keyTail ? ` · chave <code>${st.keyTail}</code>` : (st.needsKey ? "" : " · sem chave (endpoint local)"))
         + (st.baseUrl ? ` · <code>${st.baseUrl}</code>` : "")
-        + (st.visionModel ? `<br>imagem (OCR, golpe) via <code>${st.visionModel}</code>` : "") + pend;
+        + visaoLinha(st) + pend;
     }else{
       el.innerHTML = `<b style="color:#f43f5e">desconectado</b> — ${st.reason}`
         + (st.keyTail ? ` (chave salva: <code>${st.keyTail}</code>)` : "") + pend;
@@ -1445,6 +1507,20 @@
     S.transcricao = S.transcricao || {};
     S.transcricao.autoMaxSeg = (n >= 10 && n <= 1800) ? n : 180;
   });
+  // Preferências dos módulos de IA sob demanda. Ficam em `ia`, que é uma das
+  // CHAVES_PUBLICAS do Rust: o bundle precisa lê-las, e não há segredo num
+  // idioma de destino. Os limites são REPETIDOS do lado do bundle (`cfgIa`),
+  // porque o settings.json também é editável à mão.
+  const iaSet = (k, v) => { S.ia = S.ia || {}; S.ia[k] = v; };
+  document.getElementById("iaTraduzirPara").addEventListener("input", e =>
+    iaSet("traduzirPara", e.target.value.trim().slice(0,40)));
+  document.getElementById("iaDigestHoras").addEventListener("input", e => {
+    const n = Math.round(Number(e.target.value));
+    iaSet("digestHoras", (n >= 1 && n <= 48) ? n : 12);
+  });
+  document.getElementById("iaDigestAberta").addEventListener("change", e =>
+    iaSet("digestIncluirAberta", e.target.checked));
+
   bind("aiModel","aiModel");bind("aiBaseUrl","aiBaseUrl");bind("aiVisionModel","aiVisionModel");
   ["aiModel","aiBaseUrl","aiVisionModel"].forEach(id=>
     document.getElementById(id).addEventListener("input",marcarAiPendente));

@@ -193,3 +193,32 @@ export function ehApagada(bolha) {
     return APAGADA_RE.test((bolha.textContent || ""));
   }
 }
+
+/** A imagem DE CONTEÚDO de uma bolha (foto, print, figurinha), nunca um
+    ícone da interface: só `blob:`/`data:`, que é como o WhatsApp entrega a
+    mídia decifrada. Estava escrito à mão dentro do menu do botão direito; o
+    OCR precisa exatamente do mesmo alvo, e duas cópias divergem. */
+export function imagemDaBolha(bolha) {
+  if (!bolha) return null;
+  try {
+    return bolha.querySelector('img[src^="blob:"], img[src^="data:"]');
+  } catch (_) {
+    return null;
+  }
+}
+
+/** A última bolha da conversa aberta que satisfaz `filtro`, varrendo de baixo
+    para cima — "a mensagem mais recente que serve". É o alvo das entradas do
+    dock (traduzir/OCR/golpe), que não têm um clique do botão direito para
+    dizer em qual bolha mexer. */
+export function ultimaBolha(filtro) {
+  const todas = bolhasVisiveis();
+  for (let i = todas.length - 1; i >= 0; i--) {
+    try {
+      if (filtro(todas[i])) return todas[i];
+    } catch (_) {
+      /* uma bolha malformada não pode derrubar a busca inteira */
+    }
+  }
+  return null;
+}
