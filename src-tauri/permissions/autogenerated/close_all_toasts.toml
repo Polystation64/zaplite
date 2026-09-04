@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-all-toasts"
+description = "Enables the close_all_toasts command without any pre-configured scope."
+commands.allow = ["close_all_toasts"]
+
+[[permission]]
+identifier = "deny-close-all-toasts"
+description = "Denies the close_all_toasts command without any pre-configured scope."
+commands.deny = ["close_all_toasts"]

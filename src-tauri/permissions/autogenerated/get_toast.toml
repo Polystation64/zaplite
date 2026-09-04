@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-toast"
+description = "Enables the get_toast command without any pre-configured scope."
+commands.allow = ["get_toast"]
+
+[[permission]]
+identifier = "deny-get-toast"
+description = "Denies the get_toast command without any pre-configured scope."
+commands.deny = ["get_toast"]

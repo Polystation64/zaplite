@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-atualizacao-procurar"
+description = "Enables the atualizacao_procurar command without any pre-configured scope."
+commands.allow = ["atualizacao_procurar"]
+
+[[permission]]
+identifier = "deny-atualizacao-procurar"
+description = "Denies the atualizacao_procurar command without any pre-configured scope."
+commands.deny = ["atualizacao_procurar"]

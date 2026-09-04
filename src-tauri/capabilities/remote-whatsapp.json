@@ -1,0 +1,41 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote-whatsapp",
+  "description": "Permite que os módulos injetados no WhatsApp Web conversem com o backend Rust. Origem NÃO confiável: nada aqui pode devolver segredo (por isso load_settings_public, e não load_settings)",
+  "remote": {
+    "urls": [
+      "https://web.whatsapp.com"
+    ]
+  },
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-always-on-top",
+    "notification:default",
+    "allow-load-settings-public",
+    "allow-open-settings",
+    "allow-set-always-on-top",
+    "allow-ai-complete",
+    "allow-transcribe-audio",
+    "allow-save-media",
+    "allow-abrir-arquivo",
+    "allow-revelar-arquivo",
+    "allow-open-external",
+    "allow-show-toast",
+    "allow-get-toast",
+    "allow-close-toast",
+    "allow-close-all-toasts",
+    "allow-focus-chat",
+    "allow-take-pending-chat",
+    "allow-take-pending-deeplink",
+    "allow-report-chats",
+    "allow-conn-heartbeat",
+    "allow-conn-transition",
+    "allow-conn-recovery",
+    "allow-get-connection-state"
+  ]
+}

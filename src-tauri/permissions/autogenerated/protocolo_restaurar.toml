@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-protocolo-restaurar"
+description = "Enables the protocolo_restaurar command without any pre-configured scope."
+commands.allow = ["protocolo_restaurar"]
+
+[[permission]]
+identifier = "deny-protocolo-restaurar"
+description = "Denies the protocolo_restaurar command without any pre-configured scope."
+commands.deny = ["protocolo_restaurar"]

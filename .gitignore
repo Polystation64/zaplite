@@ -1,0 +1,14 @@
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+dist/
+preview.html
+shot_*.png
+*.log
+# pasta pronta-para-subir do `npm run publicar` (instalador + latest.json)
+publicacao/
+
+# chaves de assinatura do atualizador - NUNCA versionar
+*.key
+*.key.pub
+.zaplite-keys/

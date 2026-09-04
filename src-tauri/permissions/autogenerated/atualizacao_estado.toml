@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-atualizacao-estado"
+description = "Enables the atualizacao_estado command without any pre-configured scope."
+commands.allow = ["atualizacao_estado"]
+
+[[permission]]
+identifier = "deny-atualizacao-estado"
+description = "Denies the atualizacao_estado command without any pre-configured scope."
+commands.deny = ["atualizacao_estado"]

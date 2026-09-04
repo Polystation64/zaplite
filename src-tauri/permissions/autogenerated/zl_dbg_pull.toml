@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-zl-dbg-pull"
+description = "Enables the zl_dbg_pull command without any pre-configured scope."
+commands.allow = ["zl_dbg_pull"]
+
+[[permission]]
+identifier = "deny-zl-dbg-pull"
+description = "Denies the zl_dbg_pull command without any pre-configured scope."
+commands.deny = ["zl_dbg_pull"]

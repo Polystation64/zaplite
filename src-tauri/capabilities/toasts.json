@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "toasts",
+  "description": "Permissões das janelas de notificação (conteúdo local, sem rede). O build.rs declara um manifesto de comandos, então TODA janela precisa citar allow-<comando>: sem os três de baixo, o get_toast do toast.html é recusado pelo ACL, a janela abre em branco e nunca se fecha sozinha",
+  "windows": ["toast-*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-position",
+    "allow-get-toast",
+    "allow-close-toast",
+    "allow-focus-chat",
+    "allow-snooze-toast",
+    "allow-pin-toast",
+    "allow-mute-chat"
+  ]
+}

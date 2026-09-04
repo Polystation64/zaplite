@@ -1,0 +1,37 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissões da janela de configurações (conteúdo local). É a ÚNICA janela que enxerga o settings.json inteiro, chave da API inclusive",
+  "windows": [
+    "settings"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-load-settings",
+    "allow-save-settings",
+    "allow-open-log-dir",
+    "allow-list-chats",
+    "allow-ai-status",
+    "allow-ai-test",
+    "allow-ai-models",
+    "allow-ai-oauth-openrouter",
+    "allow-whisper-status",
+    "allow-whisper-progress",
+    "allow-whisper-cancel",
+    "allow-whisper-install-engine",
+    "allow-whisper-download-model",
+    "allow-whisper-use-model",
+    "allow-whisper-delete-model",
+    "allow-protocolo-status",
+    "allow-protocolo-registrar",
+    "allow-protocolo-restaurar",
+    "allow-atualizacao-estado",
+    "allow-atualizacao-procurar",
+    "allow-atualizacao-instalar",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-always-on-top",
+    "notification:default",
+    "opener:default"
+  ]
+}

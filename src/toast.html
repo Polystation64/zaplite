@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<title>ZapLite</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:transparent;overflow:hidden;
+    font-family:'Segoe UI Variable','Segoe UI',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;
+    user-select:none;cursor:pointer}
+  /* N2 — opacidade em repouso, por regra. O mouse por cima volta sempre a
+     100%: translúcido é para não ATRAPALHAR quem está trabalhando, não para
+     esconder a mensagem de quem foi ler. Fica no <body> e não no `.toast`
+     porque `.toast` já tem a animação de entrada mexendo na própria opacidade. */
+  body{opacity:var(--op,1);transition:opacity .16s ease}
+  body:hover{opacity:1}
+
+  .toast{
+    height:100%;display:flex;position:relative;overflow:hidden;
+    background:#121a22;color:#e7eef4;border:1px solid rgba(255,255,255,.10);
+    border-radius:14px;box-shadow:0 14px 44px rgba(0,0,0,.55);
+    opacity:0;transform:translateX(24px);
+    animation:in .22s cubic-bezier(.2,.8,.3,1) forwards;
+  }
+  @keyframes in{to{opacity:1;transform:translateX(0)}}
+  .toast.out{animation:out .18s ease forwards}
+  @keyframes out{to{opacity:0;transform:translateX(24px)}}
+  /* N2 — nos cantos da ESQUERDA o toast entra e sai pela esquerda; deslizar
+     para fora pela borda oposta à que ele encosta parece defeito. */
+  body.esq .toast{transform:translateX(-24px)}
+  body.esq .toast.out{animation:outEsq .18s ease forwards}
+  @keyframes outEsq{to{opacity:0;transform:translateX(-24px)}}
+  @media (prefers-reduced-motion:reduce){
+    .toast,.toast.out,body.esq .toast,body.esq .toast.out{animation:none;opacity:1;transform:none}
+  }
+
+  /* barra de acento na lateral */
+  .bar{width:4px;flex:0 0 4px;background:var(--accent)}
+
+  .inner{flex:1;display:flex;gap:12px;align-items:center;padding:12px 14px;min-width:0}
+  .avatar{width:42px;height:42px;border-radius:50%;flex:0 0 auto;object-fit:cover;
+    background:linear-gradient(145deg,var(--accent),#0ea5e9);display:grid;place-items:center;
+    color:#04120e;font-weight:700;font-size:17px}
+  .txt{flex:1;min-width:0}
+  /* U3: nome e horário na MESMA linha — não muda a altura de nenhum estilo,
+     então os tamanhos de janela do size_for() continuam valendo.
+     O padding à direita reserva o espaço do ✕, que é absoluto no canto. */
+  .whoRow{display:flex;align-items:baseline;gap:8px;padding-right:20px}
+  .who{flex:1;min-width:0;
+    font-size:14px;font-weight:600;letter-spacing:-.01em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* W2: o horário estava legível para o código e invisível para o olho —
+     10,5px em cinza escuro ao lado de um nome em 14px/600. Agora tem peso e
+     contraste próprios, porque data e hora é informação, não enfeite. */
+  .when{flex:0 0 auto;font-size:12px;color:#b7c6d2;font-weight:600;
+    font-variant-numeric:tabular-nums;white-space:nowrap}
+  .author{font-size:11.5px;color:var(--accent);font-weight:600;margin-top:1px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* W4: marca de menção — o que justifica este toast ter furado o silêncio */
+  .at{display:inline-block;margin-right:6px;padding:0 5px;border-radius:5px;
+    background:var(--accent);color:#04120e;font-size:9.5px;font-weight:800;
+    letter-spacing:.04em;vertical-align:1px}
+  .msg{font-size:12.5px;color:#9fb0be;line-height:1.4;margin-top:3px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .x{position:absolute;top:8px;right:10px;font-size:13px;color:#5d6b78;
+    background:none;border:none;cursor:pointer;padding:2px 5px;border-radius:6px;line-height:1}
+  .x:hover{color:#e7eef4;background:rgba(255,255,255,.08)}
+
+  /* progresso do auto-fechar */
+  .prog{position:absolute;left:0;bottom:0;height:2px;background:var(--accent);opacity:.65;width:100%}
+
+  /* ---- estilo: faixa (banner largo e baixo) ---- */
+  body.faixa .toast{border-radius:12px}
+  body.faixa .avatar{width:36px;height:36px;font-size:15px}
+  body.faixa .msg{-webkit-line-clamp:1}
+
+  /* ---- estilo: destaque (VIP, presença maior) ---- */
+  body.destaque .toast{
+    border-radius:18px;border-color:var(--accent);
+    background:linear-gradient(160deg,color-mix(in srgb,var(--accent) 16%,#121a22),#121a22);
+    box-shadow:0 18px 60px rgba(0,0,0,.6), 0 0 0 1px var(--accent) inset;
+  }
+  body.destaque .bar{display:none}
+  body.destaque .inner{flex-direction:column;align-items:flex-start;justify-content:center;
+    gap:10px;padding:18px 20px}
+  body.destaque .avatar{width:52px;height:52px;font-size:21px}
+  body.destaque .who{font-size:17px}
+  body.destaque .whoRow{width:100%}
+  body.destaque .when{font-size:13px}
+  body.destaque .msg{-webkit-line-clamp:3;font-size:13px;color:#c3d1dc}
+  body.destaque .pulse{position:absolute;inset:0;border-radius:18px;pointer-events:none;
+    box-shadow:0 0 0 0 var(--accent);animation:pulse 2s ease-out infinite}
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}
+    100%{box-shadow:0 0 0 14px transparent}
+  }
+  @media (prefers-reduced-motion:reduce){body.destaque .pulse{animation:none}}
+
+  /* ---- estilo: discreto ---- */
+  body.discreto .toast{background:rgba(18,26,34,.92);border-radius:10px;
+    box-shadow:0 8px 24px rgba(0,0,0,.4)}
+  body.discreto .bar{width:3px;flex-basis:3px}
+  body.discreto .avatar{display:none}
+  body.discreto .inner{padding:10px 13px}
+  body.discreto .who{font-size:12.5px}
+  body.discreto .when{font-size:11px}
+  body.discreto .msg{font-size:11.5px;-webkit-line-clamp:1;margin-top:1px}
+  body.discreto .prog{display:none}
+
+  /* ---- N2 estilo: painel (maior que o destaque) ----
+     Existe porque no `destaque` a prévia morre em 2 linhas: mensagem longa
+     chegava cortada e obrigava a abrir a conversa só para saber o que era. */
+  body.painel .toast{border-radius:16px}
+  body.painel .bar{width:5px;flex-basis:5px}
+  body.painel .inner{flex-direction:column;align-items:flex-start;justify-content:center;
+    gap:9px;padding:16px 20px}
+  body.painel .avatar{width:48px;height:48px;font-size:20px}
+  body.painel .whoRow{width:100%}
+  body.painel .who{font-size:18px}
+  body.painel .when{font-size:13px}
+  body.painel .author{font-size:13px}
+  body.painel .msg{-webkit-line-clamp:4;font-size:13.5px;line-height:1.45;color:#c3d1dc}
+  body.painel .acts{margin-top:6px}
+  body.painel .acts button{font-size:11.5px;padding:5px 9px}
+
+  /* ---- N2 estilo: mini (mais discreto que o discreto) ----
+     Uma linha, sem avatar, só ícones: presença sem leitura. É o estilo para
+     grupo movimentado que o usuário quer SABER que falou, não ler. */
+  body.mini .toast{background:rgba(18,26,34,.94);border-radius:9px;
+    box-shadow:0 6px 18px rgba(0,0,0,.38)}
+  body.mini .bar{width:3px;flex-basis:3px}
+  body.mini .avatar{display:none}
+  body.mini .author{display:none!important}
+  body.mini .inner{padding:6px 10px;gap:6px}
+  body.mini .whoRow{padding-right:15px;gap:6px}
+  body.mini .who{font-size:11.5px}
+  body.mini .when{font-size:10px}
+  body.mini .msg{font-size:10.5px;-webkit-line-clamp:1;margin-top:0}
+  body.mini .prog{display:none}
+  body.mini .x{top:3px;right:5px;font-size:11px;padding:1px 4px}
+
+  /* ---- Z2: ações no próprio toast ("lembrar depois" e "silenciar") ------
+     Regra de ouro: elas NÃO podem roubar o clique do corpo, que é o que abre
+     a conversa. Cada botão para a propagação; tudo o mais no toast continua
+     sendo área de clique para abrir. */
+  .acts{display:flex;gap:6px;align-items:center;flex:0 0 auto}
+  .acts button{display:flex;align-items:center;gap:4px;font-family:inherit;
+    border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);
+    color:#b7c6d2;font-size:10.5px;font-weight:600;line-height:1;
+    padding:4px 7px;border-radius:7px;cursor:pointer;white-space:nowrap}
+  .acts button:hover{background:rgba(255,255,255,.13);color:#e7eef4;
+    border-color:rgba(255,255,255,.26)}
+  .acts .ic{font-size:11px;line-height:1}
+  /* card e destaque: linha própria, abaixo do texto */
+  body.card .acts,body.destaque .acts{margin-top:6px}
+  /* faixa e discreto são BAIXOS e LARGOS: as ações vão para a direita, no
+     espaço horizontal que sobra, e a altura da janela não muda. */
+  body.faixa .acts,body.discreto .acts{margin-right:8px}
+  /* destaque: as ações precisam caber nos 190px do size_for(), então a caixa
+     aperta o padding, o avatar e a prévia (3 linhas -> 2). Medido no toast
+     real: sem esse aperto o conteúdo passava de 190px. */
+  body.destaque .inner{padding:12px 18px;gap:8px}
+  body.destaque .avatar{width:46px;height:46px;font-size:19px}
+  body.destaque .msg{-webkit-line-clamp:2}
+  body.destaque .acts{margin-top:4px}
+  /* discreto: 300x68 não tem largura para rótulo nenhum — só os ícones,
+     com o texto no `title`. */
+  body.discreto .acts{gap:4px}
+  body.discreto .acts button{padding:3px 5px}
+  /* mini: 260x52, ainda mais apertado que o discreto */
+  body.mini .acts{gap:3px;margin-right:6px}
+  body.mini .acts button{padding:2px 4px}
+  body.mini .acts .ic{font-size:10px}
+
+  /* marca de persistente / de FIXADO */
+  .pin{position:absolute;bottom:8px;right:11px;font-size:9.5px;letter-spacing:.06em;
+    color:#5d6b78;text-transform:uppercase}
+  body.mini .pin,body.discreto .pin{bottom:3px;right:6px;font-size:8.5px}
+
+  /* ---- N1: toast FIXADO ---------------------------------------------------
+     Tem que dar para saber DE OLHO que aquela janela não vai sumir sozinha:
+     moldura de acento, selo "fixado" aceso, o botão 📌 pressionado, a barra de
+     progresso some e a opacidade de repouso é ignorada (fixado é para ler). */
+  body.pinned{opacity:1}
+  body.pinned .toast{border-color:var(--accent);
+    box-shadow:0 14px 44px rgba(0,0,0,.6), 0 0 0 2px var(--accent) inset}
+  body.pinned .bar{width:6px;flex-basis:6px}
+  body.pinned .prog{display:none}
+  body.pinned .pin{color:var(--accent);font-weight:800}
+  .acts button.on{background:var(--accent);border-color:var(--accent);color:#04120e}
+  .acts button.on:hover{background:var(--accent);color:#04120e}
+  /* recusa do teto de fixados: pisca em vermelho e explica no title */
+  .acts button.nope{border-color:#f43f5e;color:#f43f5e}
+</style>
+</head>
+<body>
+<div class="toast" id="toast">
+  <div class="bar"></div>
+  <div class="inner">
+    <div class="avatar" id="avatar"></div>
+    <div class="txt">
+      <div class="whoRow">
+        <div class="who" id="who">—</div>
+        <div class="when" id="when"></div>
+      </div>
+      <div class="author" id="author" style="display:none"></div>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+  <button class="x" id="close">✕</button>
+  <div class="prog" id="prog" style="display:none"></div>
+</div>
+
+<script>
+const invoke = (c,a)=> window.__TAURI__.core.invoke(c,a);
+
+// O id vem do label da janela ("toast-<id>"), que é sempre confiável.
+// A query string fica como reserva.
+const id = (function(){
+  try{
+    const label = window.__TAURI__.window.getCurrentWindow().label;
+    if(label && label.startsWith("toast-")) return label.slice(6);
+  }catch(_){}
+  return new URLSearchParams(location.search).get("id");
+})();
+
+/* --- sons sintetizados: nada de arquivos binários no instalador ---------- */
+function playTone(kind, volume){
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC || kind === "nenhum") return;
+  const ctx = new AC();
+  const master = ctx.createGain();
+  master.gain.value = Math.max(0, Math.min(1, volume ?? .7));
+  master.connect(ctx.destination);
+
+  // [frequência Hz, início s, duração s, forma de onda]
+  const SCORES = {
+    toque:  [[880,0,.10,"sine"],[1174,.10,.14,"sine"]],
+    sino:   [[1568,0,.55,"sine"],[2093,.02,.45,"sine"]],
+    pulso:  [[440,0,.07,"square"],[440,.12,.07,"square"],[440,.24,.07,"square"]],
+    alerta: [[740,0,.13,"sawtooth"],[554,.14,.13,"sawtooth"],[740,.28,.18,"sawtooth"]],
+    arpejo: [[523,0,.12,"triangle"],[659,.10,.12,"triangle"],[784,.20,.12,"triangle"],[1047,.30,.22,"triangle"]],
+  };
+  const score = SCORES[kind] || SCORES.toque;
+  score.forEach(([f,t,d,w])=>{
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = w; o.frequency.value = f;
+    // envelope curto para não estalar
+    g.gain.setValueAtTime(0, ctx.currentTime+t);
+    g.gain.linearRampToValueAtTime(.28, ctx.currentTime+t+.012);
+    g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime+t+d);
+    o.connect(g); g.connect(master);
+    o.start(ctx.currentTime+t); o.stop(ctx.currentTime+t+d+.05);
+  });
+  setTimeout(()=>ctx.close(), 2000);
+}
+
+function playSound(t){
+  if(t.sound_file){
+    const a = new Audio(t.sound_file);
+    a.volume = Math.max(0, Math.min(1, t.volume ?? .7));
+    a.play().catch(()=> playTone(t.sound, t.volume)); // se o arquivo falhar, cai no sintetizado
+  } else {
+    playTone(t.sound, t.volume);
+  }
+}
+
+// Fechar sem depender de comando nosso: `core:window:allow-close` já está na
+// capability. É a rede de segurança para qualquer falha do caminho normal —
+// janela de toast que não some sozinha é lixo permanente na tela do usuário.
+function fecharJanela(){
+  try{ window.__TAURI__.window.getCurrentWindow().close(); }catch(_){}
+}
+
+let closing = false;
+async function dismiss(){
+  if(closing) return; closing = true;
+  document.getElementById("toast").classList.add("out");
+  setTimeout(()=> invoke("close_toast",{id}).catch(fecharJanela), 180);
+}
+
+(async function(){
+  // O estado no Rust é escrito logo depois de a janela existir; nos primeiros
+  // milissegundos o payload pode ainda não estar lá. Tenta de novo antes de
+  // desistir, em vez de fechar um toast válido.
+  let t = null;
+  for(let i = 0; i < 12 && !t; i++){
+    try{ t = await invoke("get_toast",{id}); }
+    catch(e){ console.error("[ZapLite] get_toast recusado", e); fecharJanela(); return; }
+    if(!t) await new Promise(r=>setTimeout(r,50));
+  }
+  if(!t){ fecharJanela(); return; }
+
+  // N2 — canto e opacidade vêm resolvidos do Rust (é a REGRA que decide, como
+  // estilo e som). Aqui só viram classe e variável de CSS. O canto importa para
+  // a página por causa da direção da animação; quem POSICIONA é o restack.
+  const canto = ["superior-direita","superior-esquerda","inferior-esquerda"]
+    .includes(t.position) ? t.position : "inferior-direita";
+  document.body.className = (t.style || "card") + (canto.endsWith("esquerda") ? " esq" : "");
+  document.documentElement.style.setProperty("--accent", t.accent || "#22d3aa");
+  document.documentElement.style.setProperty("--op",
+    (typeof t.opacity === "number" && t.opacity > 0)
+      ? Math.max(.35, Math.min(1, t.opacity)) : 1);
+
+  document.getElementById("who").textContent = t.sender || "Mensagem";
+  // W2 — horário da mensagem. O Rust já resolve qual é (o da linha do WhatsApp
+  // ou, na falta dele, o do disparo) e manda pronto. O `||` aqui é rede de
+  // segurança: campo ausente por qualquer motivo NÃO pode deixar o toast sem
+  // horário nenhum, que foi exatamente o que o usuário relatou.
+  document.getElementById("when").textContent =
+    (t.time || "").trim() ||
+    new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+
+  // W3 — em grupo, quem falou. `card` e `destaque` têm altura para uma linha
+  // própria; `faixa` e `discreto` são baixos, então o autor entra como
+  // prefixo do texto. Nos quatro estilos o autor APARECE e é distinto do nome
+  // da conversa (que fica no `who`, em cima).
+  const compacto = (t.style === "faixa" || t.style === "discreto" || t.style === "mini");
+  const msg = document.getElementById("msg");
+  msg.textContent = t.body || "";
+  if(t.author){
+    if(compacto){
+      const a = document.createElement("span");
+      a.style.color = "var(--accent)"; a.style.fontWeight = "600";
+      a.textContent = t.author + ": ";
+      msg.prepend(a);
+    } else {
+      const a = document.getElementById("author");
+      a.textContent = t.author; a.style.display = "block";
+    }
+  }
+
+  // W4 — menção: a marca fica no NOME da conversa, o lugar que o olho procura.
+  if(t.mention){
+    const tag = document.createElement("span");
+    tag.className = "at"; tag.textContent = "@";
+    tag.title = "Você foi mencionado";
+    document.getElementById("who").prepend(tag);
+  }
+
+  const av = document.getElementById("avatar");
+  if(t.avatar){
+    const img = document.createElement("img");
+    img.src = t.avatar; img.className = "avatar";
+    img.onerror = ()=>{ img.replaceWith(av); };
+    av.replaceWith(img);
+  } else {
+    av.textContent = (t.sender||"?").trim().charAt(0).toUpperCase();
+  }
+
+  if(t.style === "destaque"){
+    const p = document.createElement("div");
+    p.className = "pulse";
+    document.getElementById("toast").appendChild(p);
+  }
+
+  playSound(t);
+  if(t.repeat_every > 0){
+    setInterval(()=>{ if(!closing) playSound(t); }, t.repeat_every*1000);
+  }
+
+  // clique no corpo abre a conversa; o ✕ só fecha.
+  // Vai o ID da conversa, nunca o nome: nome é texto que o remetente controla.
+  // Z2 — ações no próprio toast: "lembrar depois" e "silenciar esta conversa".
+  // Nenhuma delas rouba o clique do corpo (Z1): cada botão para a propagação
+  // no `click` E no `mousedown`, então clicar num botão nunca abre a conversa
+  // e clicar em qualquer outro lugar do toast continua abrindo.
+  // N1 — estado de FIXADO. Mora fora do bloco das ações porque quem lê é o
+  // laço do tempo, lá embaixo: fixado = o relógio não anda.
+  let fixado = false;
+  const selo = document.createElement("div");
+  selo.className = "pin";
+  document.getElementById("toast").appendChild(selo);
+  function pintarSelo(){
+    if(fixado){ selo.textContent = "📌 fixado"; selo.style.display = "block"; }
+    else if(t.persistent){ selo.textContent = "não expira"; selo.style.display = "block"; }
+    else { selo.style.display = "none"; }
+  }
+  pintarSelo();
+
+  (function(){
+    const acts = document.createElement("div");
+    acts.className = "acts";
+    // 300x68 (discreto) e 260x52 (mini) não cabem rótulo — só ícone + title
+    const soIcone = (t.style === "discreto" || t.style === "mini");
+    const mins = t.snooze_min || 10;
+    // `fecha:false` = o botão AGE sem fechar o toast (é o caso do 📌).
+    function botao(icone, rotulo, dica, fn, fecha){
+      const b = document.createElement("button");
+      b.type = "button"; b.title = dica; b.setAttribute("aria-label", dica);
+      const i = document.createElement("span");
+      i.className = "ic"; i.textContent = icone;
+      b.appendChild(i);
+      if(rotulo){ const s = document.createElement("span"); s.textContent = rotulo; b.appendChild(s); b.__rot = s; }
+      b.addEventListener("mousedown", (e)=> e.stopPropagation());
+      b.addEventListener("click", (e)=>{
+        e.stopPropagation(); e.preventDefault();
+        if(fecha === false){ fn(); return; }   // 📌 não fecha nada
+        if(closing) return; closing = true;
+        document.getElementById("toast").classList.add("out");
+        setTimeout(fn, 160);
+      });
+      return b;
+    }
+
+    // N1 — FIXAR: a decisão tomada no momento em que a notificação aparece.
+    // Quem manda no "está fixado?" é o Rust (é lá que mora o teto), então o
+    // botão só pinta o que o comando devolveu.
+    const bFix = botao("📌", soIcone ? "" : "Fixar",
+      "Fixar: este toast só fecha no ✕", async ()=>{
+        let r;
+        try{ r = await invoke("pin_toast",{id}); }catch(_){ return; }
+        if(r === "cheio"){
+          bFix.classList.add("nope");
+          bFix.title = "Já há fixados demais na tela — solte um antes";
+          setTimeout(()=>{ bFix.classList.remove("nope"); pintarFix(); }, 1600);
+          return;
+        }
+        fixado = (r === "fixado");
+        pintarFix(); pintarSelo();
+      }, false);
+    function pintarFix(){
+      bFix.classList.toggle("on", fixado);
+      document.body.classList.toggle("pinned", fixado);
+      bFix.setAttribute("aria-pressed", fixado ? "true" : "false");
+      bFix.title = fixado
+        ? "Fixado — só fecha no ✕. Clique para soltar."
+        : "Fixar: este toast só fecha no ✕";
+      if(bFix.__rot) bFix.__rot.textContent = fixado ? "Fixado" : "Fixar";
+    }
+    acts.appendChild(bFix);
+
+    acts.appendChild(botao("⏰", soIcone ? "" : mins+" min",
+      "Lembrar de novo daqui a "+mins+" minutos",
+      ()=> invoke("snooze_toast",{id, minutes: mins}).catch(fecharJanela)));
+    // Sem `chat_id` não há o que silenciar POR ID — e silenciar por nome é
+    // exatamente o que este projeto se recusa a fazer. O botão simplesmente
+    // não aparece, em vez de aparecer e não funcionar.
+    if(t.chat_id){
+      acts.appendChild(botao("🔕", soIcone ? "" : "Silenciar",
+        "Silenciar "+(t.sender || "esta conversa")+" no ZapLite",
+        ()=> invoke("mute_chat",{id, chatId: t.chat_id, name: t.sender || ""}).catch(fecharJanela)));
+    }
+    // compacto (faixa/discreto) = ações à direita, sem mexer na altura;
+    // card/destaque = linha própria embaixo do texto.
+    (compacto ? document.querySelector(".inner") : document.querySelector(".txt")).appendChild(acts);
+  })();
+
+  document.getElementById("toast").onclick = ()=>
+    invoke("focus_chat",{id, chatId: t.chat_id || ""}).catch(fecharJanela);
+  document.getElementById("close").onclick = (e)=>{ e.stopPropagation(); dismiss(); };
+
+  // `persistent` é a REGRA dizendo "esta conversa nunca expira" (configuração
+  // prévia). O 📌 é o usuário dizendo isso AGORA, para ESTE toast — por isso os
+  // dois caminhos existem e o laço abaixo consulta `fixado` a cada quadro.
+  if(!t.persistent){
+    // barra de progresso; pausa quando o mouse está em cima
+    const prog = document.getElementById("prog");
+    prog.style.display = "block";
+    const total = (t.duration || 7) * 1000;
+    let left = total, last = performance.now(), paused = false;
+    document.body.onmouseenter = ()=> paused = true;
+    document.body.onmouseleave = ()=> { paused = false; last = performance.now(); };
+    (function tick(now){
+      if(closing) return;
+      // N1 — fixado: o tempo não anda E volta ao começo, então soltar o 📌
+      // devolve o toast com a contagem inteira, não com o resto dela.
+      if(fixado){
+        left = total; last = now; prog.style.width = "100%";
+        return requestAnimationFrame(tick);
+      }
+      if(!paused){ left -= (now - last); }
+      last = now;
+      prog.style.width = Math.max(0, (left/total)*100) + "%";
+      if(left <= 0) return dismiss();
+      requestAnimationFrame(tick);
+    })(performance.now());
+  }
+})();
+</script>
+</body>
+</html>

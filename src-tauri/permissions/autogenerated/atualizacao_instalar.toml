@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-atualizacao-instalar"
+description = "Enables the atualizacao_instalar command without any pre-configured scope."
+commands.allow = ["atualizacao_instalar"]
+
+[[permission]]
+identifier = "deny-atualizacao-instalar"
+description = "Denies the atualizacao_instalar command without any pre-configured scope."
+commands.deny = ["atualizacao_instalar"]

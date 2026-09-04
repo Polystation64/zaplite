@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-whisper-use-model"
+description = "Enables the whisper_use_model command without any pre-configured scope."
+commands.allow = ["whisper_use_model"]
+
+[[permission]]
+identifier = "deny-whisper-use-model"
+description = "Denies the whisper_use_model command without any pre-configured scope."
+commands.deny = ["whisper_use_model"]

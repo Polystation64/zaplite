@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-zl-probe-dump"
+description = "Enables the zl_probe_dump command without any pre-configured scope."
+commands.allow = ["zl_probe_dump"]
+
+[[permission]]
+identifier = "deny-zl-probe-dump"
+description = "Denies the zl_probe_dump command without any pre-configured scope."
+commands.deny = ["zl_probe_dump"]

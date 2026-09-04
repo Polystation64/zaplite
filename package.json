@@ -1,0 +1,15 @@
+{
+  "name": "zaplite",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cliente leve e turbinado do WhatsApp Web para Windows",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "node scripts/build.mjs",
+    "publicar": "node scripts/publicar.mjs",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
+}

@@ -1,0 +1,54 @@
+[package]
+name = "zaplite"
+version = "0.1.0"
+description = "Cliente leve e turbinado do WhatsApp Web para Windows"
+edition = "2021"
+
+[lib]
+name = "zaplite_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+# K2: sem isto, abrir o app com uma instância viva mata o processo novo em
+# silêncio (o registro do atalho global colide, o erro sobe até o `build()` e,
+# com `panic = "abort"`, o processo morre antes de existir janela ou log).
+tauri-plugin-single-instance = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+# A3: diálogo nativo de "Salvar como". Sem ele o save_media gravava calado numa
+# pasta fixa — e no Windows, `Downloads\ZapLite` casa (sem diferenciar
+# maiúsculas) com a pasta do projeto do usuário, `Downloads\zaplite`.
+tauri-plugin-dialog = "2"
+# U1: atualização assinada (minisign). `default-features = false` tira `zip` e
+# `tar` do pacote — só servem para os formatos de update do macOS/Linux; aqui o
+# artefato é o instalador NSIS e nada mais. `rustls-tls` para não arrastar
+# OpenSSL, igual ao reqwest abaixo.
+tauri-plugin-updater = { version = "2.10.1", default-features = false, features = ["rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+# Extração do pacote do whisper.cpp (só deflate: o resto do zip não é usado).
+zip = { version = "2", default-features = false, features = ["deflate"] }
+tokio = { version = "1", features = ["process", "fs", "time", "rt"] }
+# OAuth PKCE do OpenRouter: verificador aleatório + desafio SHA-256.
+rand = "0.9"
+sha2 = "0.10"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+# P1: registro do esquema `whatsapp://` em HKCU (ver src/protocol.rs). Só
+# HKCU — não pede elevação e não afeta outro usuário da máquina.
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

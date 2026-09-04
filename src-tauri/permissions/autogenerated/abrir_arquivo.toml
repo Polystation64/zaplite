@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-abrir-arquivo"
+description = "Enables the abrir_arquivo command without any pre-configured scope."
+commands.allow = ["abrir_arquivo"]
+
+[[permission]]
+identifier = "deny-abrir-arquivo"
+description = "Denies the abrir_arquivo command without any pre-configured scope."
+commands.deny = ["abrir_arquivo"]

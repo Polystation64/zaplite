@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-focus-chat"
+description = "Enables the focus_chat command without any pre-configured scope."
+commands.allow = ["focus_chat"]
+
+[[permission]]
+identifier = "deny-focus-chat"
+description = "Denies the focus_chat command without any pre-configured scope."
+commands.deny = ["focus_chat"]

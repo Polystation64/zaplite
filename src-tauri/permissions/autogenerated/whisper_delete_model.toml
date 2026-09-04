@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-whisper-delete-model"
+description = "Enables the whisper_delete_model command without any pre-configured scope."
+commands.allow = ["whisper_delete_model"]
+
+[[permission]]
+identifier = "deny-whisper-delete-model"
+description = "Denies the whisper_delete_model command without any pre-configured scope."
+commands.deny = ["whisper_delete_model"]
