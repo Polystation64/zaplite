@@ -158,6 +158,31 @@ export function autorDaLinha(row) {
   }
 }
 
+/** Identificador ESTÁVEL da conversa, lido da linha da lista.
+    O WhatsApp Web não põe o jid em atributo nenhum, mas o item da lista
+    virtualizada tem chave de React `chat-<jid>` (ex.: `chat-1276...@lid`,
+    `chat-5521...@g.us`). Medido na lista real: 69 linhas, 69 ids, 0 duplicados.
+    É isso que o clique do toast usa — casar por NOME é indefensável, porque o
+    nome de uma conversa pode ser reproduzido no CORPO de uma mensagem por
+    qualquer remetente (medido: 139 `span[title]` para 69 conversas, 70 deles
+    prévias).
+
+    Mora AQUI, e não dentro do módulo de notificações, porque as notas por
+    contato, os lembretes e as ações em massa precisam da mesma chave. */
+export function chatIdDaLinha(row) {
+  if (!row) return "";
+  try {
+    const k = Object.keys(row).find((x) => x.startsWith("__reactFiber$"));
+    if (!k) return "";
+    let f = row[k];
+    for (let i = 0; i < 8 && f; i++) {
+      if (typeof f.key === "string" && f.key.startsWith("chat-")) return f.key.slice(5);
+      f = f.return;
+    }
+  } catch (_) {}
+  return "";
+}
+
 /** A linha da conversa ABERTA agora. A marca vem da própria linha
     (`aria-selected`), nunca de comparar o título do cabeçalho com o nome da
     conversa: comparação por nome deixa um remetente escolher o texto certo e
@@ -169,4 +194,28 @@ export function linhaSelecionada() {
         r.querySelector('[aria-selected="true"]') || r.getAttribute("aria-selected") === "true"
     ) || null
   );
+}
+
+/** O jid da conversa ABERTA, ou "" quando nenhuma está. Mesmo id que o
+    `focus_chat` usa. É a chave das notas por contato: o nome muda, o id não. */
+export function chatIdAberto() {
+  return chatIdDaLinha(linhaSelecionada());
+}
+
+/** O nome da conversa aberta, para EXIBIR (nunca para identificar). Vem do
+    cabeçalho do painel de mensagens; cai na linha selecionada se o cabeçalho
+    mudar de forma. */
+export function nomeDaConversaAberta() {
+  try {
+    const h = document.querySelector("#main header");
+    if (h) {
+      const t =
+        h.querySelector('[data-testid="conversation-info-header-chat-title"]') ||
+        h.querySelector("span[title]");
+      const s = t ? (t.getAttribute("title") || t.textContent || "").trim() : "";
+      if (s) return s;
+    }
+  } catch (_) {}
+  const sel = linhaSelecionada();
+  return sel ? nomeDaLinha(sel) : "";
 }

@@ -33,7 +33,16 @@ export function showPanel(title, body, acoes) {
     };
   }
   p.querySelector("b").textContent = title;
-  p.querySelector(".zl-panel-body").textContent = body;
+  /* Onda 2: `body` pode ser um NÓ, não só texto. Os módulos novos (nota,
+     lembretes, ações em massa, exportar, baixar) precisam de campo, caixinha e
+     botão dentro do painel — e reusar este aqui é o que lhes dá de graça o
+     cabeçalho, o botão de copiar, o de fechar e o posicionamento. Texto
+     continua entrando por `textContent`: nada de HTML de string, que numa
+     página de terceiro é injeção esperando acontecer. */
+  const corpo = p.querySelector(".zl-panel-body");
+  corpo.textContent = "";
+  if (body && body.nodeType) corpo.appendChild(body);
+  else corpo.textContent = body;
   const velhas = p.querySelector(".zl-panel-acoes");
   if (velhas) velhas.remove();
   if (acoes && acoes.length) {

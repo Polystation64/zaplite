@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-escolher-pasta"
+description = "Enables the escolher_pasta command without any pre-configured scope."
+commands.allow = ["escolher_pasta"]
+
+[[permission]]
+identifier = "deny-escolher-pasta"
+description = "Denies the escolher_pasta command without any pre-configured scope."
+commands.deny = ["escolher_pasta"]

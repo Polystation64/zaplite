@@ -220,7 +220,10 @@
       };
     }
     p.querySelector("b").textContent = title;
-    p.querySelector(".zl-panel-body").textContent = body;
+    const corpo = p.querySelector(".zl-panel-body");
+    corpo.textContent = "";
+    if (body && body.nodeType) corpo.appendChild(body);
+    else corpo.textContent = body;
     const velhas = p.querySelector(".zl-panel-acoes");
     if (velhas) velhas.remove();
     if (acoes && acoes.length) {
@@ -309,6 +312,34 @@
     .zl-panel-acoes button:hover{filter:brightness(1.1)}
     .zl-bar{margin-top:10px;height:8px;border-radius:99px;background:rgba(255,255,255,.13);overflow:hidden}
     .zl-bar i{display:block;height:100%;background:var(--zl-accent,#22d3aa);transition:width .1s linear}
+
+    /* Onda 2 \u2014 campos dentro do painel (nota, lembrete, sele\xE7\xE3o em massa).
+       O painel j\xE1 existia; o que faltava era com que cara um <textarea> e uma
+       lista de caixinhas ficam dentro dele. */
+    .zl-form{display:flex;flex-direction:column;gap:8px;white-space:normal}
+    .zl-form textarea,.zl-form input[type=text],.zl-form input[type=time],.zl-form input[type=number]{
+      width:100%;box-sizing:border-box;background:#0b141a;color:#e9edef;font-family:inherit;
+      font-size:13px;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:8px 9px}
+    .zl-form textarea{min-height:110px;resize:vertical;line-height:1.45}
+    .zl-form textarea:focus,.zl-form input:focus{outline:2px solid var(--zl-accent,#22d3aa);outline-offset:-1px}
+    .zl-form label{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;line-height:1.4;cursor:pointer}
+    .zl-form label input[type=checkbox]{margin:2px 0 0;flex:0 0 auto;accent-color:var(--zl-accent,#22d3aa)}
+    .zl-lim{font-size:11px;color:#8696a0;line-height:1.45}
+    .zl-lista{display:flex;flex-direction:column;gap:6px;max-height:34vh;overflow:auto;
+      border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px}
+    .zl-item{display:flex;align-items:center;gap:8px;font-size:12.5px}
+    .zl-item .zl-x2{margin-left:auto;background:rgba(255,255,255,.08);border:none;color:#e9edef;
+      cursor:pointer;font-size:11px;padding:2px 8px;border-radius:6px;font-family:inherit}
+    .zl-item .zl-x2:hover{background:rgba(244,63,94,.35)}
+
+    /* Onda 2 \u2014 indicador discreto de "esta conversa tem nota". Um bloco de
+       papel no cabe\xE7alho da conversa aberta e um ponto na linha da lista. */
+    #zl-nota-hdr{width:28px;height:28px;margin:0 4px;border:none;border-radius:9px;cursor:pointer;
+      font-size:14px;line-height:1;background:transparent;color:#8696a0;flex:0 0 auto}
+    #zl-nota-hdr.tem{background:var(--zl-accent,#22d3aa);color:#04120e}
+    #zl-nota-hdr:hover{filter:brightness(1.15)}
+    .zl-nota-dot{position:absolute;left:2px;top:2px;width:7px;height:7px;border-radius:99px;
+      background:var(--zl-accent,#22d3aa);box-shadow:0 0 0 2px rgba(0,0,0,.35);pointer-events:none;z-index:5}
 
     /* A4 \u2014 modo NSFW. O borr\xE3o vai S\xD3 nos elementos que o JS marcou (m\xEDdia
        dentro de bolha, pr\xE9via da lista, visualizador); a interface do WhatsApp
@@ -523,7 +554,22 @@
     translate: true,
     ocr: true,
     scamDetect: true,
-    dailyDigest: true
+    dailyDigest: true,
+    // Onda 2 — os seis LOCAIS. Nascem ligados pela mesma razão dos de IA, e
+    // aqui o argumento é ainda mais forte: nenhum deles chama provedor nenhum,
+    // nenhum manda byte para fora e cinco dos seis não fazem NADA até um
+    // clique. O único com efeito contínuo é `contactNotes`, e o efeito é um
+    // temporizador de 1,5 s que pinta um indicador — não uma varredura.
+    //
+    // `quickReplies` fica ligado e mesmo assim inerte: sem atalho cadastrado no
+    // Painel, `acharAtalho` devolve null em toda tecla. E ele NUNCA envia:
+    // expandir é escrever na caixa, e o gatilho jamais é Enter.
+    contactNotes: true,
+    quickReplies: true,
+    reminders: true,
+    bulkUnread: true,
+    exportChat: true,
+    bulkDownload: true
   };
   async function applyAll() {
     try {
@@ -1734,7 +1780,15 @@
     "audio/ogg": "ogg",
     "audio/mpeg": "mp3",
     "audio/mp4": "m4a",
-    "application/pdf": "pdf"
+    "application/pdf": "pdf",
+    // MEDIDO na prova da onda 2: o primeiro export de conversa saiu como
+    // `...-092429.plain`, porque o palpite `mime.split("/")[1]` transforma
+    // `text/plain` em "plain". Extensão errada não é cosmética — é o Windows
+    // não sabendo com que programa abrir o arquivo que o usuário acabou de
+    // salvar. Os dois tipos que o exportador produz entram no mapa.
+    "text/plain": "txt",
+    "application/json": "json",
+    "text/csv": "csv"
   };
   function nomeSugerido(blob, prefixo) {
     const mime = String(blob && blob.type || "").split(";")[0].trim().toLowerCase();
@@ -2676,10 +2730,40 @@
       return "";
     }
   }
+  function chatIdDaLinha(row) {
+    if (!row) return "";
+    try {
+      const k = Object.keys(row).find((x) => x.startsWith("__reactFiber$"));
+      if (!k) return "";
+      let f = row[k];
+      for (let i = 0; i < 8 && f; i++) {
+        if (typeof f.key === "string" && f.key.startsWith("chat-")) return f.key.slice(5);
+        f = f.return;
+      }
+    } catch (_) {
+    }
+    return "";
+  }
   function linhaSelecionada() {
     return linhasDaLista().find(
       (r) => r.querySelector('[aria-selected="true"]') || r.getAttribute("aria-selected") === "true"
     ) || null;
+  }
+  function chatIdAberto() {
+    return chatIdDaLinha(linhaSelecionada());
+  }
+  function nomeDaConversaAberta() {
+    try {
+      const h = document.querySelector("#main header");
+      if (h) {
+        const t = h.querySelector('[data-testid="conversation-info-header-chat-title"]') || h.querySelector("span[title]");
+        const s = t ? (t.getAttribute("title") || t.textContent || "").trim() : "";
+        if (s) return s;
+      }
+    } catch (_) {
+    }
+    const sel = linhaSelecionada();
+    return sel ? nomeDaLinha(sel) : "";
   }
 
   // src-tauri/injection/src/modulos/notificacoes.js
@@ -2746,19 +2830,6 @@
           } catch (_) {
             return "";
           }
-        }
-        function chatIdDaLinha(row) {
-          try {
-            const k = Object.keys(row).find((x) => x.startsWith("__reactFiber$"));
-            if (!k) return "";
-            let f = row[k];
-            for (let i = 0; i < 8 && f; i++) {
-              if (typeof f.key === "string" && f.key.startsWith("chat-")) return f.key.slice(5);
-              f = f.return;
-            }
-          } catch (_) {
-          }
-          return "";
         }
         const SINAIS_MUDO = [
           '[data-testid*="mute" i]',
@@ -3524,6 +3595,927 @@
     });
   }
 
+  // src-tauri/injection/src/modulos/notas.js
+  var ID_ACT = "zl-nota";
+  var timer = null;
+  var idsComNota = [];
+  async function recarregarIds() {
+    try {
+      idsComNota = await invoke("note_ids") || [];
+    } catch (e) {
+      console.warn("[ZapLite] note_ids:", e.message);
+      idsComNota = [];
+    }
+  }
+  function pintarCabecalho() {
+    const header = document.querySelector("#main header");
+    if (!header) {
+      const velho = document.getElementById("zl-nota-hdr");
+      if (velho) velho.remove();
+      return;
+    }
+    let b = document.getElementById("zl-nota-hdr");
+    if (!b) {
+      b = document.createElement("button");
+      b.id = "zl-nota-hdr";
+      b.type = "button";
+      b.textContent = "\u{1F4DD}";
+      b.onclick = (e) => {
+        e.stopPropagation();
+        abrirEditor();
+      };
+      (header.querySelector("div:last-child") || header).appendChild(b);
+    } else if (!header.contains(b)) {
+      (header.querySelector("div:last-child") || header).appendChild(b);
+    }
+    const id = chatIdAberto();
+    const tem = !!id && idsComNota.indexOf(id) >= 0;
+    b.classList.toggle("tem", tem);
+    b.title = tem ? "Esta conversa tem uma nota sua (clique para ver)" : "Escrever uma nota sobre esta conversa";
+  }
+  function pintarLista() {
+    for (const row of linhasDaLista()) {
+      const tem = idsComNota.indexOf(chatIdDaLinha(row)) >= 0;
+      const ja = row.querySelector(":scope > .zl-nota-dot");
+      if (tem && !ja) {
+        const d = document.createElement("span");
+        d.className = "zl-nota-dot";
+        d.title = "Voc\xEA tem uma nota sobre esta conversa";
+        if (getComputedStyle(row).position === "static") row.style.position = "relative";
+        row.appendChild(d);
+      } else if (!tem && ja) {
+        ja.remove();
+      }
+    }
+  }
+  function pintar() {
+    pintarCabecalho();
+    pintarLista();
+  }
+  function limparMarcas() {
+    const b = document.getElementById("zl-nota-hdr");
+    if (b) b.remove();
+    document.querySelectorAll(".zl-nota-dot").forEach((d) => d.remove());
+  }
+  async function abrirEditor() {
+    const id = chatIdAberto();
+    if (!id) {
+      return showPanel(
+        "Notas por contato",
+        "Nenhuma conversa aberta. Abra a conversa sobre a qual voc\xEA quer anotar \u2014 a nota fica presa ao identificador dela, n\xE3o ao nome (nome muda, id n\xE3o)."
+      );
+    }
+    let texto = "";
+    try {
+      texto = await invoke("note_get", { chatId: id }) || "";
+    } catch (e) {
+      return showPanel("N\xE3o deu para ler a nota", e.message);
+    }
+    const form = document.createElement("div");
+    form.className = "zl-form";
+    const ta = document.createElement("textarea");
+    ta.value = texto;
+    ta.placeholder = "O que voc\xEA quer lembrar sobre esta conversa\u2026";
+    ta.spellcheck = false;
+    const lim = document.createElement("div");
+    lim.className = "zl-lim";
+    lim.textContent = "Fica s\xF3 nesta m\xE1quina, no settings.json, presa ao id da conversa (" + id + "). N\xE3o vai para o WhatsApp, n\xE3o vira mensagem e a outra pessoa nunca fica sabendo.";
+    form.appendChild(ta);
+    form.appendChild(lim);
+    const nome = nomeDaConversaAberta();
+    const p = showPanel("Nota \u2014 " + (nome || "conversa aberta"), form, [
+      [
+        "Salvar",
+        async () => {
+          try {
+            await invoke("note_set", { chatId: id, texto: ta.value });
+            await recarregarIds();
+            pintar();
+            showPanel(
+              "Nota salva",
+              ta.value.trim() ? "Guardada nesta m\xE1quina para \u201C" + (nome || id) + "\u201D." : "A nota estava vazia, ent\xE3o foi apagada."
+            );
+          } catch (e) {
+            showPanel("N\xE3o deu para salvar a nota", e.message);
+          }
+        }
+      ],
+      [
+        "Apagar",
+        async () => {
+          try {
+            await invoke("note_set", { chatId: id, texto: "" });
+            await recarregarIds();
+            pintar();
+            showPanel("Nota apagada", "Nada mais guardado para \u201C" + (nome || id) + "\u201D.");
+          } catch (e) {
+            showPanel("N\xE3o deu para apagar a nota", e.message);
+          }
+        }
+      ]
+    ]);
+    setTimeout(() => ta.focus(), 0);
+    return p;
+  }
+  function registrarNotas() {
+    reg({
+      id: "contactNotes",
+      label: "Notas por contato",
+      apply() {
+        addAct(ensureDock(), ID_ACT, "\u{1F4DD}", "Nota desta conversa", "", abrirEditor);
+        if (timer) return;
+        recarregarIds().then(pintar);
+        timer = setInterval(pintar, 1500);
+      },
+      revert() {
+        dropAct(ID_ACT);
+        if (timer) {
+          clearInterval(timer);
+          timer = null;
+        }
+        limparMarcas();
+      }
+    });
+  }
+
+  // src-tauri/injection/src/modulos/respostas-rapidas.js
+  var ID_ACT2 = "zl-qr";
+  function atalhosCadastrados() {
+    const bruto = settings && settings.quickReplies;
+    if (!Array.isArray(bruto)) return [];
+    return bruto.map((r) => ({
+      atalho: String(r && r.atalho || "").trim(),
+      texto: String(r && r.texto || "")
+    })).filter((r) => r.atalho && r.texto);
+  }
+  function acharAtalho(antes, atalhos, exigeEspaco) {
+    const s = String(antes || "");
+    const m = exigeEspaco ? s.match(/(^|\s)(\/[\w-]+)[ \u00a0]$/) : s.match(/(^|\s)(\/[\w-]+)$/);
+    if (!m) return null;
+    const alvo = m[2].toLowerCase();
+    const lista = Array.isArray(atalhos) ? atalhos : [];
+    for (const r of lista) {
+      const a = String(r && r.atalho || "").trim().toLowerCase();
+      if (a !== alvo) continue;
+      const texto = String(r && r.texto || "");
+      if (!texto) return null;
+      const tamanho = m[0].length - m[1].length;
+      return { inicio: s.length - tamanho, fim: s.length, texto };
+    }
+    return null;
+  }
+  function ehCaixaDeMensagem(el) {
+    if (!el || el.nodeType !== 1) return false;
+    try {
+      if (el.getAttribute("contenteditable") !== "true") return false;
+      const main = document.querySelector("#main");
+      if (!main || !main.contains(el)) return false;
+      return !!el.closest("footer");
+    } catch (_) {
+      return false;
+    }
+  }
+  function escreverNaCaixa(no, inicio, fim, texto) {
+    const sel = window.getSelection();
+    if (!sel) return false;
+    const r = document.createRange();
+    r.setStart(no, inicio);
+    r.setEnd(no, fim);
+    sel.removeAllRanges();
+    sel.addRange(r);
+    return document.execCommand("insertText", false, texto);
+  }
+  function planejarExpansao(alvo, exigeEspaco) {
+    if (!ehCaixaDeMensagem(alvo)) return null;
+    const sel = window.getSelection();
+    if (!sel || !sel.isCollapsed || !sel.anchorNode) return null;
+    const no = sel.anchorNode;
+    if (no.nodeType !== 3) return null;
+    if (!alvo.contains(no)) return null;
+    const off = sel.anchorOffset;
+    const antes = (no.textContent || "").slice(0, off);
+    const achado = acharAtalho(antes, atalhosCadastrados(), exigeEspaco);
+    if (!achado || achado.inicio < 0) return null;
+    const esperado = antes.slice(achado.inicio);
+    return function escrever() {
+      if (!no.parentNode) return;
+      if ((no.textContent || "").slice(achado.inicio, off) !== esperado) return;
+      escreverNaCaixa(no, achado.inicio, off, achado.texto);
+    };
+  }
+  var ouvindo = false;
+  function aoDigitar(ev) {
+    if (!ev.isTrusted) return;
+    const alvo = ev.target;
+    if (ev.type === "keydown") {
+      if (ev.key !== "Tab" || ev.shiftKey || ev.ctrlKey || ev.altKey) return;
+      const escrever2 = planejarExpansao(alvo, false);
+      if (!escrever2) return;
+      ev.preventDefault();
+      setTimeout(escrever2, 0);
+      return;
+    }
+    if (ev.inputType && ev.inputType.indexOf("delete") === 0) return;
+    const escrever = planejarExpansao(alvo, true);
+    if (escrever) setTimeout(escrever, 0);
+  }
+  function listar() {
+    const lista = atalhosCadastrados();
+    if (!lista.length) {
+      return showPanel(
+        "Respostas r\xE1pidas",
+        "Nenhum atalho cadastrado ainda.\n\nCadastre no Painel do ZapLite, aba M\xD3DULOS, no bloco \u201CRespostas r\xE1pidas\u201D. Depois \xE9 s\xF3 digitar o atalho na caixa de mensagem e apertar espa\xE7o (ou Tab): o texto entra na caixa \u2014 o ZapLite NUNCA envia por conta pr\xF3pria.",
+        [["Abrir o Painel", () => invoke("open_settings", { secao: "modulos" }).catch(() => {
+        })]]
+      );
+    }
+    const corpo = lista.map((r) => r.atalho + "\n    " + r.texto.replace(/\n/g, "\n    ")).join("\n\n");
+    return showPanel(
+      "Respostas r\xE1pidas (" + lista.length + ")",
+      corpo + "\n\n\u2014\u2014\u2014\nDigite o atalho na caixa de mensagem e aperte espa\xE7o ou Tab. A expans\xE3o escreve na caixa e para por a\xED: enviar continua sendo voc\xEA.",
+      [["Editar no Painel", () => invoke("open_settings", { secao: "modulos" }).catch(() => {
+      })]]
+    );
+  }
+  function registrarRespostasRapidas() {
+    reg({
+      id: "quickReplies",
+      label: "Respostas r\xE1pidas",
+      apply() {
+        addAct(ensureDock(), ID_ACT2, "\u26A1", "Respostas r\xE1pidas", "", listar);
+        if (ouvindo) return;
+        ouvindo = true;
+        document.addEventListener("keydown", aoDigitar, true);
+        document.addEventListener("input", aoDigitar, true);
+      },
+      revert() {
+        dropAct(ID_ACT2);
+        if (!ouvindo) return;
+        ouvindo = false;
+        document.removeEventListener("keydown", aoDigitar, true);
+        document.removeEventListener("input", aoDigitar, true);
+      }
+    });
+  }
+
+  // src-tauri/injection/src/modulos/lembretes.js
+  var ID_ACT3 = "zl-lembretes";
+  var PASSO_MS = 2e4;
+  var pendentes = [];
+  var timer2 = null;
+  function proximoDisparo(texto, agora) {
+    const t = String(texto || "").trim().toLowerCase().replace(/\s+/g, "");
+    const m = t.match(/^(\d{1,2})(?::(\d{2}))?h?$/);
+    if (!m) return 0;
+    const h = +m[1];
+    const min = m[2] === void 0 ? 0 : +m[2];
+    if (!(h >= 0 && h <= 23 && min >= 0 && min <= 59)) return 0;
+    const base = new Date(agora);
+    const alvo = new Date(agora);
+    alvo.setHours(h, min, 0, 0);
+    if (alvo.getTime() <= base.getTime()) alvo.setDate(alvo.getDate() + 1);
+    return alvo.getTime();
+  }
+  function daquiAMinutos(texto, agora) {
+    const t = String(texto || "").trim().toLowerCase().replace(/^em\s+/, "");
+    const m = t.match(/^(\d{1,4})\s*(m|min|minutos?)?$/);
+    if (!m) return 0;
+    const n = +m[1];
+    if (!(n >= 1 && n <= 1440)) return 0;
+    return agora + n * 6e4;
+  }
+  var hhmm = (ms) => {
+    const d = new Date(ms);
+    const p = (n) => String(n).padStart(2, "0");
+    const hoje = (/* @__PURE__ */ new Date()).toDateString() === d.toDateString();
+    return (hoje ? "" : p(d.getDate()) + "/" + p(d.getMonth() + 1) + " ") + p(d.getHours()) + ":" + p(d.getMinutes());
+  };
+  function carregar() {
+    const bruto = settings && settings.reminders || [];
+    pendentes = (Array.isArray(bruto) ? bruto : []).map((r) => ({
+      id: String(r && r.id || ""),
+      quando: Number(r && r.quando || 0),
+      texto: String(r && r.texto || ""),
+      conversa: String(r && r.conversa || "")
+    })).filter((r) => r.id && r.quando > 0 && r.texto);
+  }
+  async function gravar() {
+    try {
+      await invoke("save_module_data", { chave: "reminders", valor: pendentes });
+    } catch (e) {
+      showPanel(
+        "O lembrete N\xC3O foi guardado",
+        "Ele vale enquanto o app estiver aberto, mas some se voc\xEA reiniciar.\n\n" + e.message
+      );
+    }
+  }
+  async function disparar(r, atrasado) {
+    const quando = hhmm(r.quando);
+    const corpo = r.texto + (r.conversa ? "\n\nConversa: " + r.conversa : "") + (atrasado ? "\n\n(era para " + quando + " \u2014 o app estava fechado na hora)" : "");
+    try {
+      await invoke("show_toast", {
+        toast: {
+          id: "lembrete-" + r.id,
+          sender: "Lembrete do ZapLite",
+          author: "",
+          body: corpo,
+          avatar: "",
+          // vazio de propósito: ver o cabeçalho deste arquivo
+          chat_id: "",
+          muted: false,
+          time: quando,
+          clock: "",
+          is_group: false,
+          mention_mark: false
+        }
+      });
+    } catch (e) {
+      showPanel("Lembrete \u2014 " + quando, corpo + "\n\n(o aviso flutuante falhou: " + e.message + ")");
+    }
+  }
+  async function conferir() {
+    const agora = Date.now();
+    const vencidos = pendentes.filter((r) => r.quando <= agora);
+    if (!vencidos.length) return;
+    pendentes = pendentes.filter((r) => r.quando > agora);
+    await gravar();
+    for (const r of vencidos) await disparar(r, agora - r.quando > 2 * PASSO_MS);
+  }
+  function abrir() {
+    const form = document.createElement("div");
+    form.className = "zl-form";
+    const texto = document.createElement("input");
+    texto.type = "text";
+    texto.placeholder = "O que lembrar (ex.: responder o or\xE7amento)";
+    const hora = document.createElement("input");
+    hora.type = "text";
+    hora.placeholder = "Quando: 15h, 15:30, ou \u201Cem 20\u201D (minutos)";
+    const conversa = nomeDaConversaAberta();
+    const marcar = document.createElement("label");
+    const cx = document.createElement("input");
+    cx.type = "checkbox";
+    cx.checked = !!conversa;
+    cx.disabled = !conversa;
+    marcar.appendChild(cx);
+    marcar.appendChild(
+      document.createTextNode(
+        conversa ? "Citar a conversa aberta (\u201C" + conversa + "\u201D) no texto do lembrete" : "Nenhuma conversa aberta para citar"
+      )
+    );
+    const lim = document.createElement("div");
+    lim.className = "zl-lim";
+    lim.textContent = "LIMITA\xC7\xC3O: o lembrete s\xF3 dispara com o ZapLite ABERTO \u2014 o rel\xF3gio \xE9 desta p\xE1gina, n\xE3o do Windows. Se a hora passar com o app fechado, ele aparece na pr\xF3xima vez que voc\xEA abrir, marcado como atrasado. O aviso n\xE3o abre a conversa (abrir mandaria recibo de leitura); ele s\xF3 diz qual \xE9.";
+    form.appendChild(texto);
+    form.appendChild(hora);
+    form.appendChild(marcar);
+    form.appendChild(lim);
+    if (pendentes.length) {
+      const lista = document.createElement("div");
+      lista.className = "zl-lista";
+      pendentes.slice().sort((a, b) => a.quando - b.quando).forEach((r) => {
+        const li = document.createElement("div");
+        li.className = "zl-item";
+        const s = document.createElement("span");
+        s.textContent = hhmm(r.quando) + " \u2014 " + r.texto;
+        const x = document.createElement("button");
+        x.className = "zl-x2";
+        x.textContent = "cancelar";
+        x.onclick = async () => {
+          pendentes = pendentes.filter((o) => o.id !== r.id);
+          await gravar();
+          abrir();
+        };
+        li.appendChild(s);
+        li.appendChild(x);
+        lista.appendChild(li);
+      });
+      form.appendChild(lista);
+    }
+    const p = showPanel("Lembretes (" + pendentes.length + " pendente" + (pendentes.length === 1 ? "" : "s") + ")", form, [
+      [
+        "Criar lembrete",
+        async () => {
+          const oque = texto.value.trim();
+          if (!oque) return showPanel("Falta o texto", "Escreva o que voc\xEA quer lembrar.");
+          const agora = Date.now();
+          const quando = proximoDisparo(hora.value, agora) || daquiAMinutos(hora.value, agora);
+          if (!quando) {
+            return showPanel(
+              "N\xE3o entendi o hor\xE1rio",
+              "Escreva \u201C15h\u201D, \u201C15:30\u201D ou \u201Cem 20\u201D (minutos). Foi digitado: \u201C" + hora.value + "\u201D."
+            );
+          }
+          pendentes.push({
+            id: String(agora) + Math.random().toString(36).slice(2, 7),
+            quando,
+            texto: oque,
+            conversa: cx.checked ? conversa : ""
+          });
+          await gravar();
+          showPanel(
+            "Lembrete criado",
+            "\u201C" + oque + "\u201D \xE0s " + hhmm(quando) + ".\n\nVale s\xF3 com o ZapLite aberto. Fechou o app antes da hora, o aviso aparece atrasado na pr\xF3xima abertura."
+          );
+        }
+      ]
+    ]);
+    setTimeout(() => texto.focus(), 0);
+    return p;
+  }
+  function registrarLembretes() {
+    reg({
+      id: "reminders",
+      label: "Lembretes",
+      apply() {
+        addAct(ensureDock(), ID_ACT3, "\u23F0", "Lembretes", "", abrir);
+        carregar();
+        if (timer2) return;
+        timer2 = setInterval(conferir, PASSO_MS);
+        setTimeout(conferir, 4e3);
+      },
+      revert() {
+        dropAct(ID_ACT3);
+        if (timer2) {
+          clearInterval(timer2);
+          timer2 = null;
+        }
+      }
+    });
+  }
+
+  // src-tauri/injection/src/modulos/acoes-massa.js
+  var ID_ACT4 = "zl-massa";
+  var ACOES = [
+    {
+      chave: "naolida",
+      rotulo: "Marcar como N\xC3O lida",
+      re: /marcar como n[ãa]o.?lida|mark as unread/i,
+      recibo: false,
+      nota: "N\xE3o abre a conversa e n\xE3o manda recibo de leitura."
+    },
+    {
+      chave: "arquivar",
+      rotulo: "Arquivar",
+      re: /arquivar conversa|arquivar|archive/i,
+      nao: /desarquivar|unarchive/i,
+      recibo: false,
+      nota: "N\xE3o abre a conversa e n\xE3o manda recibo de leitura. D\xE1 para desarquivar depois."
+    },
+    {
+      chave: "lida",
+      rotulo: "Marcar como lida",
+      re: /marcar como lida|mark as read/i,
+      nao: /n[ãa]o.?lida|unread/i,
+      recibo: true,
+      nota: "ATEN\xC7\xC3O: marcar como lida \xE9 o mesmo que ler \u2014 o WhatsApp manda RECIBO DE LEITURA para quem escreveu (o segundo tique fica azul, se a pessoa n\xE3o desligou isso). \xC9 irrevers\xEDvel."
+    }
+  ];
+  async function itensDoMenu(row) {
+    const alvo = row.querySelector('[role="gridcell"][aria-colindex="2"]') || row;
+    const antes = /* @__PURE__ */ new Set([...document.querySelectorAll('li,[role="button"],[role="menuitem"]')]);
+    const r = alvo.getBoundingClientRect();
+    alvo.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+        clientX: r.left + Math.min(60, r.width / 2),
+        clientY: r.top + r.height / 2,
+        button: 2,
+        buttons: 2
+      })
+    );
+    const novos = await until(
+      () => {
+        const v = [...document.querySelectorAll('li,[role="button"],[role="menuitem"]')].filter(
+          (e) => !antes.has(e) && (e.textContent || "").trim()
+        );
+        return v.length ? v : null;
+      },
+      2e3,
+      50
+    );
+    return novos || [];
+  }
+  async function fecharMenu() {
+    for (const t of ["keydown", "keyup"]) {
+      try {
+        document.dispatchEvent(
+          new KeyboardEvent(t, { key: "Escape", code: "Escape", keyCode: 27, bubbles: true })
+        );
+      } catch (_) {
+      }
+    }
+    await wait(120);
+    if (document.querySelector('[role="menuitem"]')) {
+      try {
+        document.body.dispatchEvent(
+          new MouseEvent("mousedown", { bubbles: true, cancelable: true, clientX: 2, clientY: 2 })
+        );
+        document.body.dispatchEvent(
+          new MouseEvent("mouseup", { bubbles: true, cancelable: true, clientX: 2, clientY: 2 })
+        );
+      } catch (_) {
+      }
+    }
+    await wait(120);
+  }
+  function rotuloDoItem(el) {
+    return limparTexto(textoSemIcone(el));
+  }
+  function casar(itens, acao) {
+    for (const el of itens) {
+      const t = rotuloDoItem(el);
+      if (!t || t.length > 60) continue;
+      if (!acao.re.test(t)) continue;
+      if (acao.nao && acao.nao.test(t)) continue;
+      return { el, texto: t };
+    }
+    return null;
+  }
+  async function executar(acao, escolhidas) {
+    const feitos = [];
+    const faltaram = [];
+    for (let i = 0; i < escolhidas.length; i++) {
+      const { id, nome } = escolhidas[i];
+      showPanel(
+        acao.rotulo,
+        "Conversa " + (i + 1) + " de " + escolhidas.length + "\u2026\n" + nome + "\n\nNenhuma conversa \xE9 aberta: a a\xE7\xE3o sai pelo menu do bot\xE3o direito da linha."
+      );
+      const row = linhasDaLista().find((r) => chatIdDaLinha(r) === id);
+      if (!row) {
+        faltaram.push(nome + " \u2014 a linha saiu da lista (ela \xE9 virtualizada)");
+        continue;
+      }
+      const itens = await itensDoMenu(row);
+      const item = casar(itens, acao);
+      if (!item) {
+        await fecharMenu();
+        faltaram.push(
+          nome + " \u2014 o WhatsApp n\xE3o ofereceu \u201C" + acao.rotulo + "\u201D no menu desta conversa"
+        );
+        continue;
+      }
+      cliqueReal(item.el);
+      feitos.push(nome);
+      await wait(320);
+    }
+    showPanel(
+      acao.rotulo + " \u2014 resultado",
+      "Feitas: " + feitos.length + " de " + escolhidas.length + (feitos.length ? "\n  \xB7 " + feitos.join("\n  \xB7 ") : "") + (faltaram.length ? "\n\nN\xE3o deu em " + faltaram.length + ":\n  \xB7 " + faltaram.join("\n  \xB7 ") : "") + "\n\nNenhuma conversa foi aberta por este m\xF3dulo" + (acao.recibo ? ", mas \u201Cmarcar como lida\u201D manda recibo de leitura por si s\xF3." : ", ent\xE3o nenhum recibo de leitura saiu daqui.")
+    );
+  }
+  async function conferir2(escolhidas) {
+    const { id, nome } = escolhidas[0];
+    const row = linhasDaLista().find((r) => chatIdDaLinha(r) === id);
+    if (!row) return showPanel("Conferir a\xE7\xF5es", "A linha de \u201C" + nome + "\u201D saiu da lista.");
+    const itens = await itensDoMenu(row);
+    const rotulos = itens.map(rotuloDoItem).filter((t) => t && t.length <= 60);
+    await fecharMenu();
+    const achadas = ACOES.map(
+      (a) => (casar(itens, a) ? "  ok    " : "  FALTA ") + a.rotulo
+    ).join("\n");
+    showPanel(
+      "A\xE7\xF5es que o WhatsApp oferece",
+      "Menu do bot\xE3o direito de \u201C" + nome + "\u201D (aberto e fechado, nada foi clicado):\n\n" + (rotulos.length ? rotulos.map((t) => "  \xB7 " + t).join("\n") : "  (nenhum item apareceu)") + "\n\nDo que este m\xF3dulo usa:\n" + achadas
+    );
+  }
+  function abrir2() {
+    const linhas = linhasDaLista().map((r) => ({ id: chatIdDaLinha(r), nome: nomeDaLinha(r) || "(sem nome)" })).filter((x) => x.id);
+    if (!linhas.length) {
+      return showPanel("A\xE7\xF5es em massa", "Nenhuma conversa renderizada na lista agora.");
+    }
+    const form = document.createElement("div");
+    form.className = "zl-form";
+    const aviso = document.createElement("div");
+    aviso.className = "zl-lim";
+    aviso.textContent = "S\xF3 aparecem aqui as conversas RENDERIZADAS: a lista do WhatsApp \xE9 virtualizada e o ZapLite n\xE3o a rola sozinho. Role a lista antes de abrir esta janela para alcan\xE7ar mais. Nenhuma a\xE7\xE3o daqui ABRE conversa \u2014 abrir mandaria recibo de leitura para quem escreveu.";
+    const lista = document.createElement("div");
+    lista.className = "zl-lista";
+    const caixas = [];
+    linhas.forEach((x) => {
+      const l = document.createElement("label");
+      const c = document.createElement("input");
+      c.type = "checkbox";
+      l.appendChild(c);
+      l.appendChild(document.createTextNode(x.nome));
+      lista.appendChild(l);
+      caixas.push({ c, x });
+    });
+    const todas = document.createElement("label");
+    const ct = document.createElement("input");
+    ct.type = "checkbox";
+    ct.onchange = () => caixas.forEach((k) => k.c.checked = ct.checked);
+    todas.appendChild(ct);
+    todas.appendChild(document.createTextNode("marcar todas as " + linhas.length + " vis\xEDveis"));
+    form.appendChild(aviso);
+    form.appendChild(todas);
+    form.appendChild(lista);
+    const escolhidas = () => caixas.filter((k) => k.c.checked).map((k) => k.x);
+    const exigir = (fn) => async () => {
+      const e = escolhidas();
+      if (!e.length) return showPanel("A\xE7\xF5es em massa", "Nenhuma conversa marcada.");
+      await fn(e);
+    };
+    const acoes = [["Conferir a\xE7\xF5es (n\xE3o executa)", exigir(conferir2)]];
+    for (const a of ACOES) {
+      acoes.push([
+        a.rotulo,
+        exigir(async (e) => {
+          showPanel(
+            "Confirmar: " + a.rotulo,
+            a.nota + "\n\nConversas (" + e.length + "):\n  \xB7 " + e.map((x) => x.nome).join("\n  \xB7 ") + "\n\nNada acontece at\xE9 voc\xEA clicar no bot\xE3o abaixo.",
+            [[a.recibo ? "Sim, e eu aceito o recibo de leitura" : "Confirmar", () => executar(a, e)]]
+          );
+        })
+      ]);
+    }
+    return showPanel("A\xE7\xF5es em massa (" + linhas.length + " conversas vis\xEDveis)", form, acoes);
+  }
+  function registrarAcoesEmMassa() {
+    reg({
+      id: "bulkUnread",
+      label: "A\xE7\xF5es em massa",
+      apply() {
+        addAct(ensureDock(), ID_ACT4, "\u2611", "A\xE7\xF5es em massa", "", abrir2);
+      },
+      revert() {
+        dropAct(ID_ACT4);
+      }
+    });
+  }
+
+  // src-tauri/injection/src/modulos/exportar.js
+  var ID_ACT5 = "zl-exportar";
+  function analisarPrePlainText(pre) {
+    const s = String(pre || "").trim();
+    const m = s.match(/^\[([^\],]+),\s*([^\]]+)\]\s*(.*?):\s*$/);
+    if (!m) return { hora: "", data: "", autor: "" };
+    return { hora: m[1].trim(), data: m[2].trim(), autor: m[3].trim() };
+  }
+  function linhaDeExportacao(msg) {
+    const carimbo = msg.data || msg.hora ? "[" + [msg.hora, msg.data].filter(Boolean).join(", ") + "] " : "";
+    const quem = msg.autor ? msg.autor + ": " : "";
+    return carimbo + quem + (msg.texto || "");
+  }
+  function tipoDeMidia(bolha) {
+    try {
+      if (imagemDaBolha(bolha)) return "imagem";
+      if (bolha.querySelector("video")) return "v\xEDdeo";
+      if (bolha.querySelector('audio,[data-testid="ptt-status"],[data-icon="ptt-status"]')) return "\xE1udio";
+      if (bolha.querySelector('[data-icon="document"],[data-testid="document-thumb"]')) return "documento";
+    } catch (_) {
+    }
+    return "";
+  }
+  function coletarMensagens() {
+    const out = [];
+    for (const bolha of bolhasVisiveis()) {
+      const pre = bolha.querySelector("[data-pre-plain-text]");
+      const meta = analisarPrePlainText(pre && pre.getAttribute("data-pre-plain-text"));
+      let texto = (textoDaBolha(bolha) || "").trim();
+      const midia = tipoDeMidia(bolha);
+      if (!texto && midia) texto = "<" + midia + ">";
+      if (!texto && ehApagada(bolha)) texto = "<mensagem apagada>";
+      if (!texto) continue;
+      out.push({
+        id: idDaBolha(bolha),
+        hora: meta.hora,
+        data: meta.data,
+        autor: meta.autor || (ehDeSaida(bolha) ? "Voc\xEA" : ""),
+        saida: ehDeSaida(bolha),
+        midia,
+        texto
+      });
+    }
+    return out;
+  }
+  var AVISO = "S\xF3 o que est\xE1 RENDERIZADO na tela. A lista de mensagens do WhatsApp \xE9 virtualizada e o ZapLite n\xE3o rola a conversa sozinho \u2014 role at\xE9 onde quiser antes de exportar e o n\xFAmero abaixo sobe. Nada \xE9 enviado a servidor nenhum: o arquivo vai direto para o disco.";
+  function nomeSemAcentoNemBarra(s) {
+    return String(s || "conversa").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").slice(0, 48) || "conversa";
+  }
+  async function exportar(formato) {
+    const msgs = coletarMensagens();
+    if (!msgs.length) {
+      return showPanel(
+        "Exportar conversa",
+        "Nenhuma mensagem renderizada. Abra uma conversa e role at\xE9 o trecho que voc\xEA quer salvar."
+      );
+    }
+    const nome = nomeDaConversaAberta() || "conversa";
+    const cabecalho = "Conversa: " + nome + "\nExportado pelo ZapLite em " + (/* @__PURE__ */ new Date()).toLocaleString() + "\nMensagens capturadas: " + msgs.length + "\nLIMITE: " + AVISO + "\n----------------------------------------------------------------------\n";
+    const prefixo = "zaplite-" + nomeSemAcentoNemBarra(nome);
+    let blob;
+    if (formato === "json") {
+      blob = new Blob(
+        [
+          JSON.stringify(
+            {
+              conversa: nome,
+              exportadoEm: (/* @__PURE__ */ new Date()).toISOString(),
+              mensagensCapturadas: msgs.length,
+              limitacao: AVISO,
+              mensagens: msgs
+            },
+            null,
+            2
+          )
+        ],
+        { type: "application/json" }
+      );
+    } else {
+      blob = new Blob([cabecalho + msgs.map(linhaDeExportacao).join("\n") + "\n"], {
+        type: "text/plain;charset=utf-8"
+      });
+    }
+    await salvarArquivo(blob, prefixo);
+  }
+  function abrir3() {
+    const msgs = coletarMensagens();
+    const nome = nomeDaConversaAberta();
+    const form = document.createElement("div");
+    form.className = "zl-form";
+    const cab = document.createElement("div");
+    cab.textContent = nome ? "Conversa aberta: " + nome + "\nMensagens renderizadas agora: " + msgs.length : "Nenhuma conversa aberta.";
+    cab.style.whiteSpace = "pre-wrap";
+    const lim = document.createElement("div");
+    lim.className = "zl-lim";
+    lim.textContent = AVISO;
+    form.appendChild(cab);
+    form.appendChild(lim);
+    return showPanel("Exportar conversa", form, [
+      ["Salvar .txt", () => exportar("txt")],
+      ["Salvar .json", () => exportar("json")]
+    ]);
+  }
+  function registrarExportar() {
+    reg({
+      id: "exportChat",
+      label: "Exportar conversa",
+      apply() {
+        addAct(ensureDock(), ID_ACT5, "\u2B73", "Exportar conversa", "", abrir3);
+      },
+      revert() {
+        dropAct(ID_ACT5);
+      }
+    });
+  }
+
+  // src-tauri/injection/src/modulos/baixar-massa.js
+  var ID_ACT6 = "zl-baixar";
+  var PAUSA_MS = 120;
+  var AVISO2 = "S\xF3 as m\xEDdias RENDERIZADAS e J\xC1 CARREGADAS. A conversa \xE9 virtualizada (o ZapLite n\xE3o a rola sozinho) e uma m\xEDdia que ainda n\xE3o foi aberta na tela n\xE3o tem arquivo para ler \u2014 role at\xE9 onde quiser e deixe as miniaturas carregarem antes de baixar. Nada sai da m\xE1quina: os arquivos v\xE3o direto para a pasta que voc\xEA escolher.";
+  var EXT_POR_MIME2 = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/quicktime": "mov",
+    "audio/ogg": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "application/pdf": "pdf"
+  };
+  function midiasVisiveis() {
+    const out = [];
+    const vistos = {};
+    bolhasVisiveis().forEach((bolha, i) => {
+      const cands = [];
+      const img = imagemDaBolha(bolha);
+      if (img) cands.push(["imagem", img.src]);
+      try {
+        bolha.querySelectorAll("video").forEach((v) => {
+          const src = v.currentSrc || v.src || (v.querySelector("source") || {}).src || "";
+          if (src) cands.push(["video", src]);
+        });
+        bolha.querySelectorAll("audio").forEach((a) => {
+          const src = a.currentSrc || a.src || "";
+          if (src) cands.push(["audio", src]);
+        });
+      } catch (_) {
+      }
+      for (const [tipo, url] of cands) {
+        if (!url || url.indexOf("blob:") !== 0) continue;
+        if (vistos[url]) continue;
+        vistos[url] = true;
+        out.push({
+          tipo,
+          url,
+          ordem: i + 1,
+          id: idDaBolha(bolha),
+          saida: ehDeSaida(bolha)
+        });
+      }
+    });
+    return out;
+  }
+  function progresso(titulo, texto, pct) {
+    const p = showPanel(titulo, texto);
+    const corpo = p.querySelector(".zl-panel-body");
+    const bar = document.createElement("div");
+    bar.className = "zl-bar";
+    const i = document.createElement("i");
+    i.style.width = Math.max(0, Math.min(100, Math.round(pct || 0))) + "%";
+    bar.appendChild(i);
+    corpo.appendChild(bar);
+    return p;
+  }
+  async function base64De(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("a p\xE1gina recusou o arquivo (HTTP " + r.status + ")");
+    const b = await r.blob();
+    const bytes = new Uint8Array(await b.arrayBuffer());
+    let s = "";
+    const PEDACO = 32768;
+    for (let i = 0; i < bytes.length; i += PEDACO) {
+      s += String.fromCharCode.apply(null, bytes.subarray(i, i + PEDACO));
+      if (i % (PEDACO * 32) === 0) await wait(0);
+    }
+    const mime = String(b.type || "").split(";")[0].trim().toLowerCase();
+    return { b64: btoa(s), ext: EXT_POR_MIME2[mime] || (mime.split("/")[1] || "bin").replace(/[^a-z0-9]/g, ""), bytes: bytes.length };
+  }
+  async function baixar() {
+    const itens = midiasVisiveis();
+    if (!itens.length) {
+      return showPanel(
+        "Download em massa",
+        "Nenhuma m\xEDdia carregada na conversa aberta agora.\n\n" + AVISO2
+      );
+    }
+    let pasta;
+    try {
+      const r = await invoke("escolher_pasta");
+      if (!r || r.cancelado) return showPanel("Download em massa", "Voc\xEA fechou a janela sem escolher a pasta. Nada foi baixado.");
+      pasta = r.pasta;
+    } catch (e) {
+      return showPanel("N\xE3o deu para escolher a pasta", e.message);
+    }
+    const carimbo = (/* @__PURE__ */ new Date()).toISOString().slice(0, 16).replace(/[-:T]/g, "");
+    let ok = 0;
+    let total = 0;
+    const falhas = [];
+    let ultimo = "";
+    for (let i = 0; i < itens.length; i++) {
+      const it = itens[i];
+      progresso(
+        "Baixando m\xEDdias",
+        "Arquivo " + (i + 1) + " de " + itens.length + " (" + it.tipo + ")\nPasta: " + pasta,
+        i * 100 / itens.length
+      );
+      try {
+        const { b64, ext, bytes } = await base64De(it.url);
+        const nome = "zaplite-" + carimbo + "-" + String(it.ordem).padStart(3, "0") + "-" + it.tipo + "." + ext;
+        const r = await invoke("save_media_em", { pasta, dataB64: b64, filename: nome });
+        ok++;
+        total += bytes;
+        ultimo = r && r.path || "";
+      } catch (e) {
+        falhas.push("#" + it.ordem + " (" + it.tipo + "): " + (e && e.message || String(e)));
+      }
+      await wait(PAUSA_MS);
+    }
+    const kb = total > 1024 * 1024 ? (total / 1024 / 1024).toFixed(1) + " MB" : Math.round(total / 1024) + " KB";
+    showPanel(
+      "Download em massa \u2014 resultado",
+      "Baixadas: " + ok + " de " + itens.length + " (" + kb + ")\nPasta: " + pasta + (falhas.length ? "\n\nFalharam " + falhas.length + ":\n  \xB7 " + falhas.join("\n  \xB7 ") : "") + "\n\n" + AVISO2,
+      ultimo ? [["Abrir a pasta", () => invoke("revelar_arquivo", { caminho: ultimo }).catch((e) => showPanel("Erro", e.message))]] : null
+    );
+  }
+  function abrir4() {
+    const itens = midiasVisiveis();
+    const nome = nomeDaConversaAberta();
+    const conta = itens.reduce((a, i) => {
+      a[i.tipo] = (a[i.tipo] || 0) + 1;
+      return a;
+    }, {});
+    const form = document.createElement("div");
+    form.className = "zl-form";
+    const cab = document.createElement("div");
+    cab.style.whiteSpace = "pre-wrap";
+    cab.textContent = nome ? "Conversa aberta: " + nome + "\nM\xEDdias prontas para baixar: " + itens.length + (itens.length ? " (" + Object.keys(conta).map((k) => conta[k] + " " + k).join(", ") + ")" : "") : "Nenhuma conversa aberta.";
+    const lim = document.createElement("div");
+    lim.className = "zl-lim";
+    lim.textContent = AVISO2;
+    form.appendChild(cab);
+    form.appendChild(lim);
+    return showPanel("Download em massa", form, [["Escolher pasta e baixar", baixar]]);
+  }
+  function registrarBaixarMassa() {
+    reg({
+      id: "bulkDownload",
+      label: "Download em massa",
+      apply() {
+        addAct(ensureDock(), ID_ACT6, "\u2913", "Baixar m\xEDdias da conversa", "", abrir4);
+      },
+      revert() {
+        dropAct(ID_ACT6);
+      }
+    });
+  }
+
   // src-tauri/injection/src/main.js
   connCore();
   registrarEnvioNaoSalvo();
@@ -3545,6 +4537,12 @@
   registrarOcr();
   registrarGolpe();
   registrarResumoDiario();
+  registrarRespostasRapidas();
+  registrarAcoesEmMassa();
+  registrarNotas();
+  registrarLembretes();
+  registrarBaixarMassa();
+  registrarExportar();
   window.__ZAPLITE_RELOAD__ = applyAll;
   boot();
 })();

@@ -50,6 +50,34 @@ const BASE_CSS = `
     .zl-bar{margin-top:10px;height:8px;border-radius:99px;background:rgba(255,255,255,.13);overflow:hidden}
     .zl-bar i{display:block;height:100%;background:var(--zl-accent,#22d3aa);transition:width .1s linear}
 
+    /* Onda 2 — campos dentro do painel (nota, lembrete, seleção em massa).
+       O painel já existia; o que faltava era com que cara um <textarea> e uma
+       lista de caixinhas ficam dentro dele. */
+    .zl-form{display:flex;flex-direction:column;gap:8px;white-space:normal}
+    .zl-form textarea,.zl-form input[type=text],.zl-form input[type=time],.zl-form input[type=number]{
+      width:100%;box-sizing:border-box;background:#0b141a;color:#e9edef;font-family:inherit;
+      font-size:13px;border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:8px 9px}
+    .zl-form textarea{min-height:110px;resize:vertical;line-height:1.45}
+    .zl-form textarea:focus,.zl-form input:focus{outline:2px solid var(--zl-accent,#22d3aa);outline-offset:-1px}
+    .zl-form label{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;line-height:1.4;cursor:pointer}
+    .zl-form label input[type=checkbox]{margin:2px 0 0;flex:0 0 auto;accent-color:var(--zl-accent,#22d3aa)}
+    .zl-lim{font-size:11px;color:#8696a0;line-height:1.45}
+    .zl-lista{display:flex;flex-direction:column;gap:6px;max-height:34vh;overflow:auto;
+      border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:8px}
+    .zl-item{display:flex;align-items:center;gap:8px;font-size:12.5px}
+    .zl-item .zl-x2{margin-left:auto;background:rgba(255,255,255,.08);border:none;color:#e9edef;
+      cursor:pointer;font-size:11px;padding:2px 8px;border-radius:6px;font-family:inherit}
+    .zl-item .zl-x2:hover{background:rgba(244,63,94,.35)}
+
+    /* Onda 2 — indicador discreto de "esta conversa tem nota". Um bloco de
+       papel no cabeçalho da conversa aberta e um ponto na linha da lista. */
+    #zl-nota-hdr{width:28px;height:28px;margin:0 4px;border:none;border-radius:9px;cursor:pointer;
+      font-size:14px;line-height:1;background:transparent;color:#8696a0;flex:0 0 auto}
+    #zl-nota-hdr.tem{background:var(--zl-accent,#22d3aa);color:#04120e}
+    #zl-nota-hdr:hover{filter:brightness(1.15)}
+    .zl-nota-dot{position:absolute;left:2px;top:2px;width:7px;height:7px;border-radius:99px;
+      background:var(--zl-accent,#22d3aa);box-shadow:0 0 0 2px rgba(0,0,0,.35);pointer-events:none;z-index:5}
+
     /* A4 — modo NSFW. O borrão vai SÓ nos elementos que o JS marcou (mídia
        dentro de bolha, prévia da lista, visualizador); a interface do WhatsApp
        usa <svg>/[data-icon], que nunca recebem a classe. */

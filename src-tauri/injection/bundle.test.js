@@ -472,6 +472,181 @@ teste("o aviso do detector de golpes sobrevive ao empacotamento", () => {
   assert.ok(SRC.includes("NUNCA declare que algo \\xE9 seguro"), "a proibição sumiu do prompt");
 });
 
+
+/* ==========================================================================
+   ONDA 2 — as decisões dos seis módulos locais que dá para exercitar FORA do
+   navegador. Todas foram escritas como função pura de propósito: decisão que
+   só dá para testar com uma sessão real do WhatsApp aberta é decisão não
+   testada, e três destes módulos mexem em coisa que não tem desfazer.
+   ========================================================================== */
+
+const acharAtalho = new Function(extrair("acharAtalho") + "; return acharAtalho;")();
+
+const ATALHOS = [
+  { atalho: "/pix", texto: "chave: 11999990000" },
+  { atalho: "/end", texto: "Rua A, 100" },
+  { atalho: "/vazio", texto: "" },
+];
+
+teste("o atalho expande com espaco e com Tab, e nunca com Enter", () => {
+  // espaço: exigeEspaco = true
+  const a = acharAtalho("bom dia /pix ", ATALHOS, true);
+  assert.ok(a, "nao casou com o espaco");
+  assert.strictEqual(a.texto, "chave: 11999990000");
+  assert.strictEqual("bom dia /pix ".slice(a.inicio, a.fim), "/pix ");
+
+  // Tab: exigeEspaco = false, sem espaço no fim
+  const b = acharAtalho("bom dia /pix", ATALHOS, false);
+  assert.ok(b, "nao casou no Tab");
+  assert.strictEqual("bom dia /pix".slice(b.inicio, b.fim), "/pix");
+
+  // sem espaço e sem Tab (ou seja: ainda digitando) não expande nada
+  assert.strictEqual(acharAtalho("bom dia /pix", ATALHOS, true), null);
+
+  // O gatilho de Enter NÃO existe no módulo: se existir, esta linha acusa.
+  // (o corpo do listener é `keydown` só para Tab)
+  assert.ok(
+    !/ev\.key\s*===\s*"Enter"/.test(SRC),
+    "apareceu um gatilho de Enter na expansao de atalho: expandir e escrever, nunca enviar"
+  );
+});
+
+teste("atalho no meio de palavra ou de URL nao expande", () => {
+  for (const antes of ["http://ola/pix ", "abc/pix ", "x/pix "]) {
+    assert.strictEqual(acharAtalho(antes, ATALHOS, true), null, antes);
+  }
+  // começo de linha vale
+  assert.ok(acharAtalho("/pix ", ATALHOS, true));
+  // depois de quebra de linha também
+  assert.ok(acharAtalho("oi\n/pix ", ATALHOS, true));
+});
+
+teste("atalho desconhecido, texto vazio e lista vazia nao expandem", () => {
+  assert.strictEqual(acharAtalho("/naoexiste ", ATALHOS, true), null);
+  assert.strictEqual(acharAtalho("/vazio ", ATALHOS, true), null, "texto vazio nao pode expandir");
+  assert.strictEqual(acharAtalho("/pix ", [], true), null);
+  assert.strictEqual(acharAtalho("/pix ", null, true), null);
+  assert.strictEqual(acharAtalho("", ATALHOS, true), null);
+});
+
+/* --- lembretes ---------------------------------------------------------- */
+const proximoDisparo = new Function(extrair("proximoDisparo") + "; return proximoDisparo;")();
+const daquiAMinutos = new Function(extrair("daquiAMinutos") + "; return daquiAMinutos;")();
+
+teste("hora que ainda vem hoje e hoje; hora que ja passou e amanha", () => {
+  const agora = new Date(2026, 7, 16, 14, 0, 0).getTime();
+  const t1 = proximoDisparo("15h", agora);
+  assert.strictEqual(new Date(t1).getHours(), 15);
+  assert.strictEqual(new Date(t1).getDate(), 16, "15h as 14h e hoje");
+
+  const t2 = proximoDisparo("8:30", agora);
+  assert.strictEqual(new Date(t2).getHours(), 8);
+  assert.strictEqual(new Date(t2).getMinutes(), 30);
+  assert.strictEqual(new Date(t2).getDate(), 17, "8:30 as 14h so pode ser amanha");
+
+  // a hora exata de agora também é amanhã: "às 14h" digitado às 14h em ponto
+  // não pode disparar no mesmo instante.
+  assert.strictEqual(new Date(proximoDisparo("14:00", agora)).getDate(), 17);
+});
+
+teste("o que nao e horario devolve 0, e nunca um NaN virando data", () => {
+  const agora = Date.now();
+  for (const ruim of ["", "amanha", "25h", "12:70", "abc", "9:9", null, undefined, "15:30:00"]) {
+    assert.strictEqual(proximoDisparo(ruim, agora), 0, JSON.stringify(ruim));
+  }
+});
+
+teste("em N minutos aceita a faixa util e recusa o resto", () => {
+  const agora = 1000000;
+  assert.strictEqual(daquiAMinutos("em 20", agora), agora + 20 * 60000);
+  assert.strictEqual(daquiAMinutos("20", agora), agora + 20 * 60000);
+  assert.strictEqual(daquiAMinutos("em 5 min", agora), agora + 5 * 60000);
+  for (const ruim of ["em 0", "em 2000", "em -3", "em muitos", ""]) {
+    assert.strictEqual(daquiAMinutos(ruim, agora), 0, ruim);
+  }
+});
+
+/* --- exportar conversa -------------------------------------------------- */
+const analisarPrePlainText = new Function(
+  extrair("analisarPrePlainText") + "; return analisarPrePlainText;"
+)();
+const linhaDeExportacao = new Function(
+  extrair("linhaDeExportacao") + "; return linhaDeExportacao;"
+)();
+
+teste("o carimbo do WhatsApp vira hora, data e autor", () => {
+  const m = analisarPrePlainText("[13:38, 15/08/2026] Marcelo Silva: ");
+  assert.deepStrictEqual(m, { hora: "13:38", data: "15/08/2026", autor: "Marcelo Silva" });
+  // sem autor (conversa 1:1 em algumas versoes)
+  assert.strictEqual(analisarPrePlainText("[07:05, 01/01/2026] : ").autor, "");
+  // nada reconhecivel nao inventa campo nenhum
+  assert.deepStrictEqual(analisarPrePlainText("qualquer coisa"), {
+    hora: "",
+    data: "",
+    autor: "",
+  });
+  assert.deepStrictEqual(analisarPrePlainText(null), { hora: "", data: "", autor: "" });
+});
+
+teste("a linha exportada nao inventa carimbo nem dois-pontos", () => {
+  assert.strictEqual(
+    linhaDeExportacao({ hora: "13:38", data: "15/08/2026", autor: "Ana", texto: "oi" }),
+    "[13:38, 15/08/2026] Ana: oi"
+  );
+  // sem metadados a linha e so o texto — nada de "[] : oi"
+  assert.strictEqual(linhaDeExportacao({ texto: "oi" }), "oi");
+  assert.strictEqual(linhaDeExportacao({ autor: "Ana", texto: "oi" }), "Ana: oi");
+});
+
+/* --- as travas que precisam sobreviver ao empacotamento ----------------- */
+teste("nenhum modulo da onda 2 aperta Enter nem clica em enviar", () => {
+  for (const proibido of [
+    'key: "Enter"',
+    'key:"Enter"',
+    "keyCode: 13",
+    'aria-label*="Enviar"',
+    "send-button",
+  ]) {
+    assert.ok(!SRC.includes(proibido), "apareceu no bundle: " + proibido);
+  }
+});
+
+/* A expansão do atalho SÓ funciona porque a escrita sai do despacho do evento.
+   Medido na sessão real: com o `execCommand` chamado de dentro do handler de
+   `input`, o Chromium recusa a edição reentrante — o evento chegava certo
+   (`isTrusted=true`), o atalho casava, o intervalo era selecionado e o texto
+   não trocava. Quem apagar o `setTimeout` "porque é gambiarra" quebra o módulo
+   inteiro sem quebrar teste nenhum de função pura. Por isso a trava é aqui. */
+teste("a escrita da expansao continua adiada para fora do despacho do evento", () => {
+  const i = SRC.indexOf("function planejarExpansao");
+  assert.ok(i > 0, "planejarExpansao sumiu do bundle");
+  const trecho = SRC.slice(i, i + 3000);
+  assert.ok(
+    /setTimeout\(escrever, 0\)/.test(SRC),
+    "a escrita voltou a acontecer dentro do handler: o Chromium recusa execCommand reentrante"
+  );
+  // e a reconferencia que protege o adiamento continua la
+  assert.ok(
+    trecho.indexOf("!== esperado") > 0,
+    "sumiu a reconferencia do texto antes de escrever: com o adiamento, o DOM pode ter mudado"
+  );
+});
+
+teste("os avisos honestos da onda 2 sobrevivem ao empacotamento", () => {
+  // Um limite que o usuário não vê não é um limite: é uma surpresa. Estes
+  // três textos são a parte do módulo que impede que ele minta, e por isso
+  // são testados como código.
+  assert.ok(SRC.includes("virtualizada"), "sumiu o aviso de lista virtualizada");
+  assert.ok(
+    SRC.includes("s\\xF3 dispara com o ZapLite ABERTO"),
+    "sumiu a limitacao honesta do lembrete"
+  );
+  assert.ok(
+    SRC.includes("recibo de leitura"),
+    "sumiu o aviso de recibo de leitura das acoes em massa"
+  );
+});
+
 (async () => {
   let falhas = 0;
   for (const [nome, fn] of casos) {

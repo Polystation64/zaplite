@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-module-data"
+description = "Enables the save_module_data command without any pre-configured scope."
+commands.allow = ["save_module_data"]
+
+[[permission]]
+identifier = "deny-save-module-data"
+description = "Denies the save_module_data command without any pre-configured scope."
+commands.deny = ["save_module_data"]

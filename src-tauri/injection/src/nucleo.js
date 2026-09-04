@@ -120,6 +120,21 @@ const MODULOS_PADRAO = {
   ocr: true,
   scamDetect: true,
   dailyDigest: true,
+  // Onda 2 — os seis LOCAIS. Nascem ligados pela mesma razão dos de IA, e
+  // aqui o argumento é ainda mais forte: nenhum deles chama provedor nenhum,
+  // nenhum manda byte para fora e cinco dos seis não fazem NADA até um
+  // clique. O único com efeito contínuo é `contactNotes`, e o efeito é um
+  // temporizador de 1,5 s que pinta um indicador — não uma varredura.
+  //
+  // `quickReplies` fica ligado e mesmo assim inerte: sem atalho cadastrado no
+  // Painel, `acharAtalho` devolve null em toda tecla. E ele NUNCA envia:
+  // expandir é escrever na caixa, e o gatilho jamais é Enter.
+  contactNotes: true,
+  quickReplies: true,
+  reminders: true,
+  bulkUnread: true,
+  exportChat: true,
+  bulkDownload: true,
 };
 
 export async function applyAll() {

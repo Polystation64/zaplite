@@ -175,6 +175,20 @@
 
   <section class="page active" id="page-mods">
     <div class="grid" id="modGrid"></div>
+    <div class="plan-sep" id="qrSec">
+      <h2>RESPOSTAS RÁPIDAS — SEUS ATALHOS</h2>
+      <p class="plan-hint">
+        O atalho tem que começar com <code style="color:#7dd3fc">/</code>. Na caixa de mensagem,
+        digite-o e aperte <b style="color:var(--txt)">espaço</b> ou <b style="color:var(--txt)">Tab</b>:
+        o texto entra na caixa. <b style="color:var(--txt)">Expandir é escrever, nunca enviar</b> —
+        o gatilho jamais é Enter, e quem manda a mensagem continua sendo você, olhando para o
+        texto já expandido. Fora da caixa de mensagem nada acontece (a busca fica de fora de
+        propósito). Fica tudo no seu <code>settings.json</code>, nesta máquina.
+      </p>
+      <div id="qrLista" class="rows" style="max-width:760px"></div>
+      <button class="primary" id="qrAdd" style="margin-top:14px;background:transparent;color:var(--accent);border:1px solid var(--accent)">+ Novo atalho</button>
+    </div>
+
     <div class="plan-sep" id="modPlanSec" hidden>
       <h2 id="modPlanTitulo">AINDA NÃO EXISTEM</h2>
       <p class="plan-hint">
@@ -842,13 +856,13 @@
   const CATALOG = [
     {id:"unsavedSend", n:1,  t:"Número não salvo", d:"Envie mensagem digitando o número, sem salvar contato.", tag:""},
     {id:"scheduleSend",n:2,  t:"Agendar mensagem", d:"Programe envios por data e hora (app precisa estar aberto).", tag:"warn"},
-    {id:"quickReplies",n:3,  t:"Respostas rápidas", d:"Atalhos como /pix e /endereço expandem em texto.", tag:""},
+    {id:"quickReplies",n:3,  t:"Respostas rápidas", d:"Atalhos como <code>/pix</code> viram texto na caixa de mensagem quando você aperta espaço ou Tab. <b>Expandir é escrever, nunca enviar</b>: o gatilho jamais é Enter, e nada sai da caixa sem você mandar. Só dispara dentro da caixa de mensagem da conversa aberta — nunca na busca. A lista fica logo abaixo desta grade.", tag:"local"},
     {id:"antiDelete",  n:4,  t:"Anti-apagadas", d:"Guarda e revela mensagens apagadas para todos.", tag:"warn"},
-    {id:"bulkUnread",  n:5,  t:"Marcar não lidas", d:"Ações em massa para limpar ou marcar conversas.", tag:""},
+    {id:"bulkUnread",  n:5,  t:"Ações em massa", d:"Marcar como não lida, arquivar e marcar como lida em várias conversas de uma vez, <b>sem abrir nenhuma</b> — as ações saem do menu do botão direito da própria linha. Abrir conversa mandaria recibo de leitura para quem escreveu; por isso “marcar como lida”, que manda o recibo por si só, vem separada e com o aviso antes. Só alcança as conversas renderizadas na lista.", tag:"local"},
     {id:"noReadReceipt",n:6, t:"Ler sem confirmar", d:"Lê sem enviar confirmação de leitura.", tag:"warn"},
     {id:"pinExtra",    n:7,  t:"Fixar sem limite", d:"Fixa mais conversas além do limite oficial (local).", tag:""},
-    {id:"contactNotes",n:8,  t:"Notas por contato", d:"Anotações privadas, salvas só na sua máquina.", tag:"local"},
-    {id:"reminders",   n:9,  t:"Lembretes", d:"Lembre de responder alguém num horário.", tag:""},
+    {id:"contactNotes",n:8,  t:"Notas por contato", d:"Uma anotação privada por conversa, guardada <b>só nesta máquina</b> e presa ao identificador da conversa (nome muda, id não). Um bloquinho no cabeçalho da conversa aberta acende quando existe nota, e um ponto discreto marca as linhas da lista que têm uma. O caderno inteiro nunca atravessa para a página do WhatsApp: o ZapLite pede uma nota por vez ao lado nativo.", tag:"local"},
+    {id:"reminders",   n:9,  t:"Lembretes", d:"“Responder o Fulano às 15h”, avisado pela mesma janela de notificação dos toasts — com o botão de fixar. <b>Só dispara com o ZapLite aberto</b>: o relógio é da página, não do Windows. Se a hora passar com o app fechado, o aviso aparece na próxima abertura, marcado como atrasado. O aviso não abre a conversa (abrir mandaria recibo de leitura); ele diz qual é.", tag:"local"},
     {id:"advSearch",   n:10, t:"Busca avançada", d:"Filtra por data, remetente e tipo de mídia.", tag:""},
     {id:"transcribe",  n:11, t:"Transcrever áudio", d:"Whisper local converte áudios em texto, offline.", tag:"local"},
     {id:"summarize",   n:12, t:"Resumir conversa", d:"Resumo em tópicos das mensagens visíveis.", tag:"ia"},
@@ -859,7 +873,7 @@
     {id:"dailyDigest", n:17, t:"Resumo do dia", d:"O que se moveu nas conversas carregadas na janela de tempo que você escolher, num painel. Sem abrir conversa nenhuma (abrir marcaria como lida e mandaria recibo de leitura): usa a prévia da lista, mais as mensagens visíveis da conversa aberta. Mostra o escopo e o texto exato ANTES de enviar; o envio é uma chamada só, no segundo clique.", tag:"ia"},
     {id:"stickerMaker",n:18, t:"Criador de figurinhas", d:"Remove fundo, corta, texto e exporta webp.", tag:""},
     {id:"imgToSticker",n:19, t:"Imagem → figurinha", d:"Vira figurinha qualquer imagem recebida.", tag:""},
-    {id:"bulkDownload",n:20, t:"Download em massa", d:"Baixa fotos e vídeos de um grupo por período.", tag:""},
+    {id:"bulkDownload",n:20, t:"Download em massa", d:"Baixa de uma vez as mídias da conversa aberta, escolhendo a pasta <b>uma única vez</b> no diálogo do Windows, com progresso e um resumo no fim (quantas foram, quantas falharam e por quê). Limite honesto: só o que está <b>renderizado e já carregado</b> — a conversa é virtualizada e o ZapLite não a rola sozinho.", tag:"local"},
     {id:"audioSpeed",  n:21, t:"Velocidade de áudio", d:"Toca em 1x até 3x com um clique.", tag:""},
     {id:"videoCompress",n:22,t:"Compressor de vídeo", d:"Comprime antes de enviar, ou manda como documento.", tag:""},
     {id:"screenRec",   n:23, t:"Gravador de tela/GIF", d:"Grava e envia direto na conversa.", tag:""},
@@ -869,7 +883,7 @@
     {id:"globalHotkey",n:27, t:"Atalho global", d:"Ctrl+Shift+W mostra/esconde o app.", tag:""},
     {id:"multiAccount",n:28, t:"Multi-conta", d:"Contas pessoal e trabalho em abas.", tag:"warn"},
     {id:"privacyBlur", n:29, t:"Blur ao sair do foco", d:"Borra a tela quando o app perde o foco.", tag:""},
-    {id:"exportChat",  n:30, t:"Exportar conversa", d:"Salva conversa em TXT/PDF com mídias.", tag:""},
+    {id:"exportChat",  n:30, t:"Exportar conversa", d:"Salva a conversa aberta em <code>.txt</code> ou <code>.json</code> pelo diálogo de “salvar como” do Windows, com progresso e “abrir a pasta” no fim. Limite honesto, dito na tela e escrito dentro do arquivo: sai <b>só o que está renderizado</b> — a lista é virtualizada e o ZapLite não a rola sozinho. O painel mostra o número real de mensagens capturadas antes de você salvar.", tag:"local"},
     {id:"smartNotify", n:31, t:"Notificações por contato", d:"Janela, som e persistência diferentes por contato ou grupo.", tag:"warn"},
     {id:"contextMenu",  n:32, t:"Menu do botão direito", d:"Transcrever, OCR, traduzir, salvar, ver mensagem apagada e checar golpe direto na mensagem.", tag:"warn"},
     {id:"nsfwBlur",    n:33, t:"Modo NSFW (borrar mídia)", d:"Fotos e vídeos das conversas entram borrados. Passe o mouse para espiar, clique para liberar aquele item.", tag:""},
@@ -894,6 +908,13 @@
     // `reg({ id: … })` e a sua chamada em `injection/src/main.js`. Nenhum
     // deles roda sozinho: ligado, cada um acrescenta uma entrada de menu.
     "translate","ocr","scamDetect","dailyDigest",
+    // ONDA 2 - os seis LOCAIS: `modulos/respostas-rapidas.js`,
+    // `modulos/acoes-massa.js`, `modulos/notas.js`, `modulos/lembretes.js`,
+    // `modulos/baixar-massa.js` e `modulos/exportar.js`, cada um com o seu
+    // `reg({ id: ... })` e a sua chamada em `injection/src/main.js`. Nenhum
+    // deles chama IA, nenhum manda byte para fora da maquina, e cinco dos
+    // seis nao fazem nada ate um clique.
+    "quickReplies","bulkUnread","contactNotes","reminders","bulkDownload","exportChat",
   ]);
 
   const PALETTE = ["#22d3aa","#7c3aed","#0ea5e9","#f43f5e","#f59e0b","#10b981","#e879f9","#f8fafc"];
@@ -959,6 +980,62 @@
     document.getElementById("modPlanTitulo").textContent =
       "AINDA NÃO EXISTEM — " + planejados.length + " DE " + CATALOG.length;
   }
+
+  /* ONDA 2 - editor da lista de respostas rapidas. Mora no Painel porque e
+     aqui que existe `save_settings`: a pagina do WhatsApp so LE `quickReplies`
+     (via load_settings_public) e nunca a reescreve. */
+  function qrArr(){
+    if(!Array.isArray(S.quickReplies)) S.quickReplies = [];
+    return S.quickReplies;
+  }
+  function renderQR(){
+    const box = document.getElementById("qrLista");
+    box.innerHTML = "";
+    const arr = qrArr();
+    if(!arr.length){
+      const vazio = document.createElement("p");
+      vazio.className = "plan-hint";
+      vazio.style.marginBottom = "0";
+      vazio.textContent = "Nenhum atalho ainda. Clique em \u201c+ Novo atalho\u201d.";
+      box.appendChild(vazio);
+      return;
+    }
+    arr.forEach(function(r,i){
+      const f = document.createElement("div");
+      f.className = "rule";
+      f.innerHTML =
+        '<div class="head">' +
+          '<input class="match qr-atalho" type="text" placeholder="/pix" spellcheck="false"/>' +
+          '<button class="del" title="Apagar este atalho">\u2715</button>' +
+        '</div>' +
+        '<div class="opt">' +
+          '<label>TEXTO QUE ENTRA NA CAIXA</label>' +
+          '<textarea class="qr-texto" rows="3" spellcheck="false" ' +
+            'style="width:100%;background:var(--panel-2);border:1px solid var(--line-2);color:var(--txt);' +
+            'padding:9px 11px;border-radius:9px;font-size:13px;font-family:inherit;resize:vertical"></textarea>' +
+        '</div>';
+      const a = f.querySelector(".qr-atalho");
+      const t = f.querySelector(".qr-texto");
+      a.value = (r&&r.atalho)||"";
+      t.value = (r&&r.texto)||"";
+      a.addEventListener("input", function(e){
+        // O bundle so casa atalho que comeca com "/" - corrigir aqui evita um
+        // atalho cadastrado que nunca dispara e ninguem entende por que.
+        let v = e.target.value.trim().replace(/\s+/g,"");
+        if(v && v.charAt(0) !== "/") v = "/" + v.replace(/^\/+/,"");
+        arr[i].atalho = v;
+      });
+      t.addEventListener("input", function(e){ arr[i].texto = e.target.value; });
+      f.querySelector(".del").onclick = function(){ arr.splice(i,1); renderQR(); };
+      box.appendChild(f);
+    });
+  }
+  document.getElementById("qrAdd").onclick = function(){
+    qrArr().push({atalho:"/", texto:""});
+    renderQR();
+    const campos = document.querySelectorAll("#qrLista .qr-atalho");
+    if(campos.length) campos[campos.length-1].focus();
+  };
 
   function renderCustom(){
     const sw = document.getElementById("swatches");
@@ -1772,10 +1849,17 @@
   (async function(){
     try{ S = (await invoke("load_settings"))||{}; }catch(_){ S={}; }
     // mesclar: o salvo vence, módulos novos usam o padrão de fábrica
+    // Tem que ser a MESMA lista de `MODULOS_PADRAO` em injection/src/nucleo.js.
+    // Enquanto as duas divergiam, um modulo que nasce ligado no bundle
+    // aparecia DESLIGADO aqui - e o primeiro "Salvar e aplicar" gravava
+    // `false` por cima de um modulo que o usuario nunca desligou.
     S.modules = Object.assign({unsavedSend:true,antiDelete:true,transcribe:true,summarize:true,
       draftReply:true,audioSpeed:true,theme:true,smartNotify:true,contextMenu:true,
-      nsfwBlur:false,autoTranscribe:false}, S.modules||{});
-    renderMods(); renderRules(); renderCustom(); renderIA();
+      nsfwBlur:false,autoTranscribe:false,
+      translate:true,ocr:true,scamDetect:true,dailyDigest:true,
+      contactNotes:true,quickReplies:true,reminders:true,
+      bulkUnread:true,exportChat:true,bulkDownload:true}, S.modules||{});
+    renderMods(); renderQR(); renderRules(); renderCustom(); renderIA();
     wRefresh();
     renderMention(); carregarChats();
     document.getElementById("status").textContent="pronto";

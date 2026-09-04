@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-media-em"
+description = "Enables the save_media_em command without any pre-configured scope."
+commands.allow = ["save_media_em"]
+
+[[permission]]
+identifier = "deny-save-media-em"
+description = "Denies the save_media_em command without any pre-configured scope."
+commands.deny = ["save_media_em"]

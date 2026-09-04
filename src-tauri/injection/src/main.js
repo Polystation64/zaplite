@@ -43,6 +43,12 @@ import { registrarTraduzir } from "./modulos/traduzir.js";
 import { registrarOcr } from "./modulos/ocr.js";
 import { registrarGolpe } from "./modulos/golpe.js";
 import { registrarResumoDiario } from "./modulos/resumo-diario.js";
+import { registrarNotas } from "./modulos/notas.js";
+import { registrarRespostasRapidas } from "./modulos/respostas-rapidas.js";
+import { registrarLembretes } from "./modulos/lembretes.js";
+import { registrarAcoesEmMassa } from "./modulos/acoes-massa.js";
+import { registrarExportar } from "./modulos/exportar.js";
+import { registrarBaixarMassa } from "./modulos/baixar-massa.js";
 
 /* 1. Camada de conexão: precisa do gancho no WebSocket ANTES de a página
       abrir o primeiro socket. É o primeiro efeito do bundle. */
@@ -79,6 +85,23 @@ registrarTraduzir();
 registrarOcr();
 registrarGolpe();
 registrarResumoDiario();
+
+/* 2c. ONDA 2 — os seis módulos LOCAIS (nenhuma chamada de IA, nenhum byte
+      saindo da máquina). Vêm por último pelo mesmo motivo dos quatro de IA:
+      são os mais novos, e a ordem de tudo o que já existia fica intacta.
+      Nenhum deles observa a árvore inteira; ligado, cada um acrescenta uma
+      entrada no dock — e, no caso das notas, um temporizador de 1,5 s que só
+      pinta o indicador da conversa aberta.
+
+      Nenhum destes seis escreve na caixa de mensagem por conta própria, e
+      nenhum envia nada: a expansão de `/pix` é a única escrita, e ela nasce
+      de uma tecla do usuário dentro da própria caixa. */
+registrarRespostasRapidas();
+registrarAcoesEmMassa();
+registrarNotas();
+registrarLembretes();
+registrarBaixarMassa();
+registrarExportar();
 
 /* 4. O Rust chama isto ao salvar settings. */
 window.__ZAPLITE_RELOAD__ = applyAll;

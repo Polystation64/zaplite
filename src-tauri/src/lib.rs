@@ -239,8 +239,27 @@ pub(crate) fn read_settings(app: &AppHandle) -> Value {
 /// destino da tradução, janela do resumo diário). Nada de segredo: é
 /// exatamente o mesmo tipo de chave que `transcricao` — o bundle precisa
 /// lê-la, e quem a lê já vê a tela inteira do WhatsApp de qualquer forma.
-const CHAVES_PUBLICAS: &[&str] =
-    &["modules", "theme", "hide", "aiTone", "nsfw", "transcricao", "ia"];
+/// ONDA 2 — `quickReplies` e `reminders` entram aqui porque a PÁGINA é quem
+/// precisa deles: o atalho `/pix` só expande se o bundle conhecer a lista, e o
+/// lembrete só dispara se o bundle souber a hora. São textos que o próprio
+/// usuário digitou para uso na conversa.
+///
+/// `contactNotes` NÃO entra, de propósito, pelo mesmo motivo de `notify`: um
+/// caderno de anotações sobre pessoas, indexado por jid, é agenda. Quem
+/// precisa dele é só a conversa ABERTA, uma nota de cada vez — e para isso
+/// existem `note_get`/`note_set`/`note_ids`, que entregam uma nota por
+/// pedido e nunca o caderno inteiro.
+const CHAVES_PUBLICAS: &[&str] = &[
+    "modules",
+    "theme",
+    "hide",
+    "aiTone",
+    "nsfw",
+    "transcricao",
+    "ia",
+    "quickReplies",
+    "reminders",
+];
 
 /// `notify` NÃO está na lista acima de propósito: as regras carregam os NOMES
 /// dos contatos do usuário (é uma agenda), e qualquer script rodando em
@@ -298,13 +317,207 @@ fn save_settings(app: AppHandle, settings: Value) -> Result<(), String> {
 /// `save_settings` (Painel) e pelo OAuth do OpenRouter, que precisa guardar a
 /// chave obtida sem passar por lugar nenhum do lado JS.
 pub(crate) fn write_settings(app: &AppHandle, settings: Value) -> Result<(), String> {
-    let p = settings_path(app);
-    fs::write(p, serde_json::to_string_pretty(&settings).unwrap()).map_err(|e| e.to_string())?;
+    gravar_settings(app, settings)?;
     // Avisa a janela principal para reaplicar módulos sem recarregar
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.eval("window.__ZAPLITE_RELOAD__ && window.__ZAPLITE_RELOAD__()");
     }
     Ok(())
+}
+
+/// Grava sem disparar `__ZAPLITE_RELOAD__`. É o caminho dos dados que a
+/// PRÓPRIA página acabou de escrever (uma nota, um lembrete): ela já tem o
+/// valor na mão, e reaplicar os 24 módulos a cada tecla salva seria trabalho
+/// pago para desfazer o que o usuário está fazendo na tela.
+fn gravar_settings(app: &AppHandle, settings: Value) -> Result<(), String> {
+    let p = settings_path(app);
+    fs::write(p, serde_json::to_string_pretty(&settings).unwrap()).map_err(|e| e.to_string())
+}
+
+/* ==========================================================================
+   ONDA 2 — DADOS LOCAIS DOS MÓDULOS (notas, lembretes, respostas rápidas)
+   --------------------------------------------------------------------------
+   Tudo mora no settings.json, que é local e nunca sai da máquina. O que estes
+   comandos acrescentam é a única coisa que faltava: um jeito de a página
+   GRAVAR sem receber `save_settings`, que reescreveria o arquivo inteiro — e
+   o arquivo inteiro tem a chave paga do usuário dentro.
+   ========================================================================== */
+
+/// Os únicos ramos que a origem remota escreve. Qualquer outro nome é recusado
+/// com mensagem, não em silêncio.
+const RAMOS_GRAVAVEIS_PELA_PAGINA: &[&str] = &["quickReplies", "reminders"];
+
+/// Tamanho máximo de um ramo vindo da página, em bytes de JSON. Não é
+/// desconfiança do usuário: é o teto que impede que um defeito de laço num
+/// módulo transforme o settings.json num arquivo de gigabytes.
+const TETO_RAMO: usize = 256 * 1024;
+
+#[tauri::command]
+fn save_module_data(app: AppHandle, chave: String, valor: Value) -> Result<(), String> {
+    if !RAMOS_GRAVAVEIS_PELA_PAGINA.contains(&chave.as_str()) {
+        return Err(format!(
+            "“{chave}” não é um ramo que a página possa gravar (só {}).",
+            RAMOS_GRAVAVEIS_PELA_PAGINA.join(", ")
+        ));
+    }
+    let bruto = serde_json::to_string(&valor).map_err(|e| e.to_string())?;
+    if bruto.len() > TETO_RAMO {
+        return Err(format!(
+            "“{chave}” ficou com {} KB; o teto é {} KB.",
+            bruto.len() / 1024,
+            TETO_RAMO / 1024
+        ));
+    }
+    let mut completo = read_settings(&app);
+    if !completo.is_object() {
+        completo = json!({});
+    }
+    completo
+        .as_object_mut()
+        .ok_or("settings.json não é um objeto")?
+        .insert(chave, valor);
+    gravar_settings(&app, completo)
+}
+
+const RAMO_NOTAS: &str = "contactNotes";
+const TETO_NOTA: usize = 20_000;
+
+/// Um jid de conversa (`...@c.us`, `...@g.us`, `...@lid`). Vem da página, então
+/// é conferido antes de virar chave de objeto no arquivo do usuário.
+fn chat_id_plausivel(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "@.-_:".contains(c))
+}
+
+#[tauri::command]
+fn note_get(app: AppHandle, chat_id: String) -> String {
+    read_settings(&app)
+        .get(RAMO_NOTAS)
+        .and_then(|n| n.get(&chat_id))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+/// Só os IDs que TÊM nota — nunca o texto. É o que o indicador discreto da
+/// lista de conversas precisa saber, e é o mínimo que responde à pergunta.
+#[tauri::command]
+fn note_ids(app: AppHandle) -> Vec<String> {
+    read_settings(&app)
+        .get(RAMO_NOTAS)
+        .and_then(|n| n.as_object())
+        .map(|m| {
+            m.iter()
+                .filter(|(_, v)| v.as_str().map(|s| !s.trim().is_empty()).unwrap_or(false))
+                .map(|(k, _)| k.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn note_set(app: AppHandle, chat_id: String, texto: String) -> Result<(), String> {
+    if !chat_id_plausivel(&chat_id) {
+        return Err("identificador de conversa inválido.".into());
+    }
+    if texto.len() > TETO_NOTA {
+        return Err(format!(
+            "a nota tem {} caracteres; o teto é {TETO_NOTA}.",
+            texto.chars().count()
+        ));
+    }
+    let mut completo = read_settings(&app);
+    if !completo.is_object() {
+        completo = json!({});
+    }
+    let raiz = completo.as_object_mut().ok_or("settings.json não é um objeto")?;
+    let notas = raiz
+        .entry(RAMO_NOTAS.to_string())
+        .or_insert_with(|| json!({}));
+    if !notas.is_object() {
+        *notas = json!({});
+    }
+    let m = notas.as_object_mut().unwrap();
+    if texto.trim().is_empty() {
+        m.remove(&chat_id);
+    } else {
+        m.insert(chat_id, json!(texto));
+    }
+    gravar_settings(&app, completo)
+}
+
+/* ==========================================================================
+   ONDA 2 — DOWNLOAD EM MASSA: uma pasta escolhida, N arquivos
+   --------------------------------------------------------------------------
+   `save_media` pergunta o destino de CADA arquivo — certo para um item, e
+   inviável para trinta. Aqui a pergunta acontece uma vez (`escolher_pasta`) e
+   o caminho escolhido fica guardado do lado Rust; `save_media_em` só aceita
+   pasta que ESTE registro conhece. A página nunca escolhe onde escrever: ela
+   só pode reusar o que o usuário apontou no diálogo nativo desta sessão.
+   ========================================================================== */
+#[derive(Default)]
+pub(crate) struct PastasEscolhidas(Mutex<HashSet<PathBuf>>);
+
+#[tauri::command]
+async fn escolher_pasta(app: AppHandle) -> Result<Value, String> {
+    let dir = pasta_padrao_de_download(&app);
+    let escolhida = app
+        .dialog()
+        .file()
+        .set_title("Onde salvar as mídias desta conversa")
+        .set_directory(&dir)
+        .blocking_pick_folder()
+        .and_then(|f| f.into_path().ok());
+    let Some(p) = escolhida else {
+        return Ok(json!({ "cancelado": true }));
+    };
+    if !p.is_dir() {
+        return Err("o caminho escolhido não é uma pasta.".into());
+    }
+    if let Some(reg) = app.try_state::<PastasEscolhidas>() {
+        if let Ok(mut g) = reg.0.lock() {
+            g.insert(p.clone());
+        }
+    }
+    Ok(json!({ "cancelado": false, "pasta": p.to_string_lossy() }))
+}
+
+#[tauri::command]
+async fn save_media_em(
+    app: AppHandle,
+    pasta: String,
+    data_b64: String,
+    filename: String,
+) -> Result<Value, String> {
+    let dir = PathBuf::from(&pasta);
+    let conhecida = app
+        .try_state::<PastasEscolhidas>()
+        .and_then(|r| r.0.lock().ok().map(|g| g.contains(&dir)))
+        .unwrap_or(false);
+    if !conhecida {
+        return Err("esta pasta não foi escolhida por você nesta sessão.".into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_b64)
+        .map_err(|e| e.to_string())?;
+    let nome = nome_seguro(&filename);
+    let mut destino = dir.join(&nome);
+    let mut n = 1;
+    while destino.exists() && n < 500 {
+        destino = dir.join(format!("{n}-{nome}"));
+        n += 1;
+    }
+    escrever_com_progresso(&app, &destino, &bytes)?;
+    if let Some(reg) = app.try_state::<MidiasSalvas>() {
+        reg.registrar(&destino);
+    }
+    Ok(json!({
+        "path": destino.to_string_lossy(),
+        "bytes": bytes.len(),
+    }))
 }
 
 /// U4 (relato do usuário: "clico em Painel ZapLite e fica uma janela branca e
@@ -1139,6 +1352,55 @@ mod testes {
         assert_eq!(filtrar_publicas(&json!({})), json!({}));
     }
 
+    /// ONDA 2 — o caderno de notas é agenda: fica do lado Rust, entregue uma
+    /// nota por pedido. Já `quickReplies` e `reminders` PRECISAM atravessar,
+    /// senão o atalho não expande e o lembrete não dispara.
+    #[test]
+    fn notas_por_contato_nao_atravessam_e_atalhos_e_lembretes_sim() {
+        let completo = json!({
+            "contactNotes": {
+                "5521999@c.us": "psiquiatra da Ana - nao mencionar o irmao"
+            },
+            "quickReplies": [{ "atalho": "/pix", "texto": "chave: alexandre@" }],
+            "reminders": [{ "id": "r1", "quando": 1, "texto": "responder" }],
+        });
+        let publico = filtrar_publicas(&completo);
+        let texto = publico.to_string();
+
+        assert!(publico.get("contactNotes").is_none(), "o caderno de notas vazou");
+        assert!(!texto.contains("psiquiatra"), "conteúdo de nota vazou: {texto}");
+        assert_eq!(publico["quickReplies"][0]["atalho"], "/pix");
+        assert_eq!(publico["reminders"][0]["id"], "r1");
+    }
+
+    /// A página só grava nos dois ramos declarados. Um nome fora da lista tem
+    /// que voltar com mensagem — recusar em silêncio faria o módulo parecer
+    /// quebrado sem dizer por quê.
+    #[test]
+    fn a_pagina_nao_grava_ramo_fora_da_allowlist() {
+        assert!(RAMOS_GRAVAVEIS_PELA_PAGINA.contains(&"quickReplies"));
+        assert!(RAMOS_GRAVAVEIS_PELA_PAGINA.contains(&"reminders"));
+        for proibido in ["anthropicKey", "modules", "notify", "contactNotes", "theme"] {
+            assert!(
+                !RAMOS_GRAVAVEIS_PELA_PAGINA.contains(&proibido),
+                "{proibido} não pode ser gravável pela página"
+            );
+        }
+    }
+
+    #[test]
+    fn chat_id_de_nota_recusa_o_que_nao_e_jid() {
+        assert!(chat_id_plausivel("5521999999999@c.us"));
+        assert!(chat_id_plausivel("120363000000000000@g.us"));
+        assert!(chat_id_plausivel("127600000000000@lid"));
+        assert!(!chat_id_plausivel(""));
+        // separador de caminho, aspas e espaço não existem em jid nenhum
+        for ruim in ["../../settings", "a/b", "a\\b", "a b", "a\"b", "a\nb"] {
+            assert!(!chat_id_plausivel(ruim), "aceitou {ruim:?}");
+        }
+        assert!(!chat_id_plausivel(&"a".repeat(129)));
+    }
+
     /// T3: o whisper-cli do build oficial no Windows fica em
     /// `<repo>\build\bin\Release` e NUNCA entra no PATH. Como o Painel já
     /// guarda o caminho do modelo, e o modelo mora na raiz do repositório
@@ -1317,10 +1579,21 @@ pub fn run() {
         // U2: último resultado da verificação de atualização, para o Painel
         // desenhar a aba sem ir à rede toda vez que abre.
         .manage(update::UpdateState::default())
+        // Onda 2: as pastas que o USUÁRIO apontou no diálogo nativo. Sem isto
+        // `save_media_em` recusaria tudo — é ele que sabe o que foi escolhido.
+        .manage(PastasEscolhidas::default())
         .invoke_handler(tauri::generate_handler![
             load_settings,
             load_settings_public,
             save_settings,
+            // Onda 2 — gravação ESTREITA a partir da página. Nenhum destes
+            // reescreve o settings.json inteiro, e nenhum devolve segredo.
+            save_module_data,
+            note_get,
+            note_ids,
+            note_set,
+            escolher_pasta,
+            save_media_em,
             open_settings,
             open_log_dir,
             // B2: o relatório de diagnóstico em texto. Só o Painel o cita

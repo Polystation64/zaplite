@@ -42,6 +42,17 @@ fn main() {
             "load_settings",
             "load_settings_public",
             "save_settings",
+            // ONDA 2 — gravação ESTREITA a partir da página. `save_settings`
+            // reescreve o arquivo inteiro (chave paga inclusa) e por isso
+            // continua só no Painel; estes seis escrevem um ramo declarado,
+            // uma nota por vez, ou um arquivo dentro de uma pasta que o
+            // USUÁRIO apontou no diálogo nativo desta sessão.
+            "save_module_data",
+            "note_get",
+            "note_ids",
+            "note_set",
+            "escolher_pasta",
+            "save_media_em",
             "open_settings",
             "open_log_dir",
             // B2: só o Painel o cita (capabilities/default.json). A página do

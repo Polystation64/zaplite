@@ -1,5 +1,6 @@
 import {
   autorDaLinha,
+  chatIdDaLinha,
   horaDaLinha,
   linhaSelecionada,
   linhasDaLista,
@@ -75,25 +76,12 @@ export function registrarNotificacoes() {
         }
       }
 
-      // 3) Identificador ESTÁVEL da conversa.
-      // O WhatsApp Web não põe o jid em atributo nenhum da lista, mas o item da
-      // lista virtualizada tem chave de React `chat-<jid>` (ex.: `chat-1276...@lid`,
-      // `chat-5521...@g.us`). Medido na lista real: 69 linhas, 69 ids, 0 duplicados.
-      // É isso que o clique usa — casar por NOME é indefensável, porque o nome de
-      // uma conversa pode ser reproduzido no CORPO de uma mensagem por qualquer
-      // remetente (medido: 139 `span[title]` para 69 conversas, 70 deles prévias).
-      function chatIdDaLinha(row) {
-        try {
-          const k = Object.keys(row).find((x) => x.startsWith("__reactFiber$"));
-          if (!k) return "";
-          let f = row[k];
-          for (let i = 0; i < 8 && f; i++) {
-            if (typeof f.key === "string" && f.key.startsWith("chat-")) return f.key.slice(5);
-            f = f.return;
-          }
-        } catch (_) {}
-        return "";
-      }
+      // 3) Identificador ESTÁVEL da conversa: `chatIdDaLinha`, agora em
+      // `lista.js`. Saiu daqui na onda 2 porque as notas por contato, os
+      // lembretes e as ações em massa precisam EXATAMENTE do mesmo id — e
+      // uma segunda cópia da varredura do fiber do React divergiria no
+      // primeiro cisma do WhatsApp, igual ao que já aconteceu com o seletor
+      // de bolha (ver V1 em bolhas.js).
 
       // U1: a conversa está SILENCIADA no próprio WhatsApp?
       // Medido na lista real do usuário (69 linhas, 22 silenciadas): o sino

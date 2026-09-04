@@ -361,6 +361,12 @@ const EXT_POR_MIME = {
   "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
   "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov",
   "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "application/pdf": "pdf",
+  // MEDIDO na prova da onda 2: o primeiro export de conversa saiu como
+  // `...-092429.plain`, porque o palpite `mime.split("/")[1]` transforma
+  // `text/plain` em "plain". Extensão errada não é cosmética — é o Windows
+  // não sabendo com que programa abrir o arquivo que o usuário acabou de
+  // salvar. Os dois tipos que o exportador produz entram no mapa.
+  "text/plain": "txt", "application/json": "json", "text/csv": "csv",
 };
 function nomeSugerido(blob, prefixo) {
   const mime = String((blob && blob.type) || "").split(";")[0].trim().toLowerCase();
