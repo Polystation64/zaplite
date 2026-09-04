@@ -17,6 +17,29 @@ Regras, para o aviso nunca mentir:
 
 <!-- Escreva a versão nova AQUI EM CIMA, logo abaixo desta linha. -->
 
+## 0.1.6
+
+Dezessete módulos novos: o ZapLite saiu de 14 para 31 dos 34 do catálogo.
+
+* **Com IA**: traduzir mensagem, ler texto de imagem (OCR), analisar se algo
+  parece golpe e um resumo do dia. Todos sob demanda — nada é enviado a
+  modelo nenhum sem você pedir.
+* **Do dia a dia**: notas por conversa, respostas rápidas (`/pix` vira texto),
+  lembretes, ações em massa, exportar conversa, baixar todas as mídias,
+  fixados extras além do limite do WhatsApp e busca por data, remetente e tipo.
+* **Figurinhas**: criar do zero com texto e recorte, ou converter uma imagem
+  da conversa. A remoção de fundo é por cor — funciona em fundo liso, e não
+  é recorte inteligente.
+* **Atalhos configuráveis** e **agendar mensagem** (nasce desligado: é o único
+  recurso que envia sozinho, e a fila fica sempre visível).
+* **Multi-conta**: perfis separados, uma conta por vez.
+* O Painel separa o que funciona do que ainda não existe — e do que decidimos
+  não fazer.
+
+Correções: o Painel não abria na 0.1.5; um arquivo de configuração com marca
+de codificação apagava suas preferências em silêncio; atalhos disparavam duas
+vezes por tecla; e links de conversa não vão mais inteiros para o log.
+
 ## 0.1.5
 
 Notificações mais configuráveis e o começo das atualizações automáticas.

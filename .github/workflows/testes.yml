@@ -1,0 +1,39 @@
+# CI mínimo e de propósito: só o que roda em segundos e não falha à toa.
+#
+# O que NÃO está aqui: `cargo test` e `npm run build`. Compilar o lado Tauri no runner
+# leva de 10 a 20 minutos, depende de toolchain e de cache de centenas de crates, e uma
+# falha de rede vira "build vermelho" sem bug nenhum. CI que falha à toa é pior que CI
+# nenhum. O backend Rust se testa localmente:
+#   cargo test --manifest-path src-tauri/Cargo.toml
+name: testes
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: instalar dependências
+        run: npm ci
+
+      # Falha se bundle.js estiver fora de sincronia com injection/src/ — o bundle é
+      # gerado, e um commit que edite só a fonte (ou só o bundle) é pegado aqui.
+      - name: bundle.js confere com injection/src/
+        run: npm run conferir-bundle
+
+      # Testes do bundle injetado; também compila os scripts do Painel e do toast.
+      - name: testes do bundle
+        run: npm run teste-bundle

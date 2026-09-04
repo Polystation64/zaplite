@@ -1,0 +1,7 @@
+# Falha de segurança não aparece aqui de propósito: com o .github/SECURITY.md no
+# repositório, o próprio GitHub oferece "Report a security vulnerability" nesta tela.
+blank_issues_enabled: false
+contact_links:
+  - name: Minha conta do WhatsApp foi bloqueada / o WhatsApp Web não abre
+    url: https://faq.whatsapp.com
+    about: "O ZapLite é um cliente não oficial, sem relação com a Meta. Problema da conta em si é com o WhatsApp."

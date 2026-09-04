@@ -470,9 +470,9 @@ mod testes {
 
     #[test]
     fn jid_e_telefone_somem() {
-        let s = limpar_texto("pre=220224481677472@lid alvo=5511954952178-1490384139@g.us");
+        let s = limpar_texto("pre=220224481677472@lid alvo=5500000000000-1000000000@g.us");
         assert!(!s.contains("220224481677472"), "{s}");
-        assert!(!s.contains("5511954952178"), "{s}");
+        assert!(!s.contains("5500000000000"), "{s}");
         assert!(!s.contains("@g.us"), "{s}");
         assert!(s.contains("<conversa>"), "{s}");
     }

@@ -8,6 +8,11 @@ shot_*.png
 # pasta pronta-para-subir do `npm run publicar` (instalador + latest.json)
 publicacao/
 
+# preferências locais de ferramenta (caminhos da máquina de quem edita)
+# JÁ ESTÁ VERSIONADO: para tirar do índice sem apagar o arquivo, rode uma vez
+#   git rm --cached .claude/settings.local.json
+.claude/settings.local.json
+
 # chaves de assinatura do atualizador - NUNCA versionar
 *.key
 *.key.pub

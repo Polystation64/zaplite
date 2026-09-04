@@ -1,0 +1,106 @@
+name: Relatar um bug
+description: Alguma coisa não funciona como deveria
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Antes de tudo: **falha de segurança não vem para cá.** Use o caminho privado
+        descrito no arquivo `.github/SECURITY.md` do repositório (aba **Security** →
+        *Report a vulnerability*, ou e-mail).
+
+        Se o app parou de funcionar depois de uma atualização do WhatsApp Web, é provável
+        que seja um seletor de DOM que mudou — vale dizer isso no relato, ajuda a achar
+        rápido.
+
+  - type: checkboxes
+    id: preliminares
+    attributes:
+      label: Antes de abrir
+      options:
+        - label: Não é um problema de segurança (esses vão em privado, por SECURITY.md)
+          required: true
+        - label: Procurei nas issues abertas e fechadas e não achei o mesmo caso
+          required: true
+
+  - type: input
+    id: versao
+    attributes:
+      label: Versão do ZapLite
+      description: Painel › SOBRE. Ex. 0.1.6
+      placeholder: "0.1.6"
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostico
+    attributes:
+      label: Diagnóstico
+      description: |
+        **Painel › SOBRE › "copiar diagnóstico"** e cole aqui.
+
+        Ele monta o relatório sozinho: versão do app, do Windows e do WebView2, estado da
+        conexão, módulos ligados, se IA e Whisper estão configurados, e as últimas 200
+        linhas técnicas do log. **Não vai** mensagem, contato nem chave de API — endereços
+        de terceiros, números longos e identificadores de conversa são removidos antes de
+        copiar.
+
+        Se por qualquer motivo você não conseguir copiar o diagnóstico, diga aqui o que
+        aconteceu ao tentar.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: passos
+    attributes:
+      label: Passo a passo para reproduzir
+      description: O caminho exato, do começo. "Não funciona" não dá para reproduzir.
+      placeholder: |
+        1. Abro o ZapLite e entro numa conversa com áudio
+        2. Clico com o botão direito na mensagem de áudio
+        3. Escolho "Transcrever"
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: esperado
+    attributes:
+      label: O que você esperava, e o que aconteceu
+      placeholder: |
+        Esperava: aparecer o texto do áudio abaixo da mensagem.
+        Aconteceu: nada; o menu fecha e não aparece aviso nenhum.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: modulo
+    attributes:
+      label: Onde acontece
+      options:
+        - Um módulo específico (diga qual no passo a passo)
+        - O Painel
+        - A janela principal / conexão com o WhatsApp
+        - Instalação ou atualização
+        - Não sei
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostico_menu
+    attributes:
+      label: Saída do item "Diagnóstico" do menu Z (opcional)
+      description: |
+        Se o sintoma é "o botão não faz nada", abra o menu **Z › Diagnóstico**: ele testa
+        cada comando nativo e mostra qual falhou e por quê. Cole o resultado aqui.
+      render: text
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        **Não anexe** capturas com conversas visíveis, sua chave de API nem o
+        `settings.json` ou o `connection.log` brutos. O diagnóstico acima já traz o que é
+        preciso, sem esses dados.

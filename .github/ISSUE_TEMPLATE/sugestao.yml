@@ -1,0 +1,63 @@
+name: Sugerir alguma coisa
+description: Ideia de módulo novo ou mudança de comportamento
+labels: ["sugestão"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        O catálogo tem 34 entradas e a separação entre o que existe e o que não existe é
+        estrutural: quem não tem código não ganha interruptor. Duas entradas estão marcadas
+        como **planejadas** (compressor de vídeo, gravador de tela) e uma como
+        **recusada** (ler sem confirmar — dessincronizaria a conta). Vale conferir a aba
+        MÓDULOS do Painel antes de sugerir.
+
+  - type: textarea
+    id: problema
+    attributes:
+      label: Qual é o problema
+      description: |
+        Comece pelo incômodo, não pela solução. O que você está tentando fazer hoje, e o
+        que atrapalha?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposta
+    attributes:
+      label: O que você propõe
+      description: Como isso funcionaria, do ponto de vista de quem usa.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tipo
+    attributes:
+      label: Tipo
+      options:
+        - Módulo novo
+        - Mudança num módulo que já existe
+        - Painel / interface
+        - Instalação, atualização ou desempenho
+        - Outra coisa
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: limites
+    attributes:
+      label: Limites conhecidos
+      description: |
+        Isto não é burocracia: as três caixas abaixo já derrubaram sugestões antes.
+      options:
+        - label: Não depende de biblioteca não oficial de protocolo (Baileys, whatsapp-web.js) — o ZapLite não fala com o servidor do WhatsApp fora do fluxo normal da página
+          required: true
+        - label: Não é automação que envia mensagem sem o usuário mandar
+          required: true
+
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: O que você já tentou (opcional)
+      description: Extensão, outro app, gambiarra manual — e por que não resolveu.
+    validations:
+      required: false
