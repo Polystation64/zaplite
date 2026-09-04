@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-diagnostico-texto"
+description = "Enables the diagnostico_texto command without any pre-configured scope."
+commands.allow = ["diagnostico_texto"]
+
+[[permission]]
+identifier = "deny-diagnostico-texto"
+description = "Denies the diagnostico_texto command without any pre-configured scope."
+commands.deny = ["diagnostico_texto"]

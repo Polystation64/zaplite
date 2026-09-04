@@ -4,12 +4,16 @@
   "version": "0.1.0",
   "description": "Cliente leve e turbinado do WhatsApp Web para Windows",
   "scripts": {
-    "dev": "tauri dev",
-    "build": "node scripts/build.mjs",
+    "dev": "node scripts/empacotar.mjs && tauri dev",
+    "build": "node scripts/empacotar.mjs && node scripts/build.mjs",
+    "empacotar": "node scripts/empacotar.mjs",
+    "conferir-bundle": "node scripts/empacotar.mjs --conferir",
+    "teste-bundle": "node src-tauri/injection/bundle.test.js",
     "publicar": "node scripts/publicar.mjs",
     "tauri": "tauri"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.1.0"
+    "@tauri-apps/cli": "^2.1.0",
+    "esbuild": "0.28.2"
   }
 }

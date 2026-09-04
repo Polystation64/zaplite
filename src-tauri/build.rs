@@ -44,6 +44,9 @@ fn main() {
             "save_settings",
             "open_settings",
             "open_log_dir",
+            // B2: só o Painel o cita (capabilities/default.json). A página do
+            // WhatsApp Web não tem como pedir o log — nem redigido.
+            "diagnostico_texto",
             "set_always_on_top",
             "ai_complete",
             // Só o Painel (conteúdo local) cita estes três — ver

@@ -31,6 +31,15 @@ import {
   notasDaVersao,
 } from "./comum.mjs";
 
+// O instalador que está aqui foi feito com o bundle.js que estava no disco na
+// hora do build. Se alguém mexeu em injection/src/ DEPOIS de `npm run build`,
+// o que iria para o site é um bundle velho — e ninguém perceberia até o app já
+// estar na máquina do usuário. Conferir custa um segundo.
+execFileSync(process.execPath, [join(RAIZ, "scripts", "empacotar.mjs"), "--conferir"], {
+  cwd: RAIZ,
+  stdio: "inherit",
+});
+
 const c = conf();
 const versao = c.version;
 

@@ -36,8 +36,12 @@ const rotuloIndicaNovo = new Function(
 
 /* `textoDaBolha` depende de duas constantes do bundle; extraí-las junto
    garante que o teste morre se elas mudarem de nome. */
+/* `(?:const|let|var)`: o bundle.js é GERADO pelo esbuild a partir de
+   injection/src/, e um `const` de topo de módulo sai como `var` no arquivo
+   empacotado — o escopo de módulo virou escopo de função. O que este teste
+   precisa amarrar é o NOME e o VALOR da constante, não a palavra-chave. */
 function constante(nome) {
-  const m = SRC.match(new RegExp("const " + nome + " = (.*);"));
+  const m = SRC.match(new RegExp("(?:const|let|var) " + nome + " = (.*);"));
   assert.ok(m, "constante " + nome + " não encontrada em bundle.js");
   return "const " + nome + " = " + m[1] + ";";
 }

@@ -1,5 +1,6 @@
 mod ai;
 mod connection;
+mod diagnostico;
 mod notify;
 mod protocol;
 mod update;
@@ -121,7 +122,7 @@ pub(crate) fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
             move |url, _features| {
                 let u = url.to_string();
                 match abrir_externo(&u) {
-                    Ok(()) => connection::note_window_event(&h, &format!("link aberto no navegador do sistema: {u}")),
+                    Ok(()) => connection::note_window_event(&h, &format!("link aberto no navegador do sistema: {}", origem_para_log(&u))),
                     Err(e) => connection::note_window_event(&h, &format!("link NÃO aberto ({e})")),
                 }
                 NewWindowResponse::Deny
@@ -140,7 +141,7 @@ pub(crate) fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
                 match abrir_externo(u) {
                     Ok(()) => connection::note_window_event(
                         &h,
-                        &format!("navegação para fora do WhatsApp desviada para o navegador: {u}"),
+                        &format!("navegação para fora do WhatsApp desviada para o navegador: {}", origem_para_log(u)),
                     ),
                     Err(e) => connection::note_window_event(&h, &format!("navegação bloqueada ({e})")),
                 }
@@ -886,13 +887,59 @@ pub(crate) fn abrir_externo(url: &str) -> Result<(), String> {
 /// Chamado pelo bundle quando o usuário clica num `<a>` de mensagem. O clique
 /// em link com `target="_blank"` NÃO chega ao `on_new_window` (medido: o
 /// WebView2 o descarta), então este é o caminho principal do A2.
+/// Só esquema + host, para o log. O caminho e a query de um link que veio de
+/// uma conversa são conteúdo de mensagem — auditoria do `connection.log` real
+/// achou uma URL de Instagram com parâmetros de rastreio gravada em claro.
+/// O log existe para responder "cliquei e não aconteceu nada", e para isso o
+/// domínio basta.
+fn origem_para_log(url: &str) -> String {
+    let Some((esquema, resto)) = url.split_once("://") else {
+        // mailto:, tel: e afins: o alvo É o dado pessoal, então nem o host sai.
+        return match url.split_once(':') {
+            Some((e, _)) if !e.is_empty() && e.len() <= 12 => format!("{e}:<omitido>"),
+            _ => "<endereço ilegível>".to_string(),
+        };
+    };
+    let host = resto
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .rsplit('@') // tira credenciais embutidas, se houver
+        .next()
+        .unwrap_or("");
+    if host.is_empty() {
+        format!("{esquema}://<sem host>")
+    } else {
+        format!("{esquema}://{host}")
+    }
+}
+
+#[cfg(test)]
+mod testes_origem {
+    use super::origem_para_log;
+
+    #[test]
+    fn so_esquema_e_host_saem_no_log() {
+        // o caso real que motivou isto: link de conversa com rastreio
+        assert_eq!(
+            origem_para_log("https://www.instagram.com/p/DcZqtvEDoX_/?igsi=abc123"),
+            "https://www.instagram.com"
+        );
+        assert_eq!(origem_para_log("https://web.whatsapp.com/send?phone=5511999998888"), "https://web.whatsapp.com");
+        assert_eq!(origem_para_log("http://user:senha@interno.example.com/x"), "http://interno.example.com");
+        assert_eq!(origem_para_log("mailto:alguem@exemplo.com"), "mailto:<omitido>");
+        assert_eq!(origem_para_log("tel:+5511999998888"), "tel:<omitido>");
+        assert_eq!(origem_para_log("lixo sem esquema"), "<endereço ilegível>");
+    }
+}
+
 #[tauri::command]
 fn open_external(app: AppHandle, url: String) -> Result<(), String> {
     let r = abrir_externo(&url);
     // Mesma razão do log em `on_new_window`: "cliquei no link e não aconteceu
     // nada" precisa deixar rastro.
     match &r {
-        Ok(()) => connection::note_window_event(&app, &format!("link da mensagem aberto no navegador: {url}")),
+        Ok(()) => connection::note_window_event(&app, &format!("link da mensagem aberto no navegador: {}", origem_para_log(&url))),
         Err(e) => connection::note_window_event(&app, &format!("link da mensagem NÃO aberto ({e})")),
     }
     r
@@ -1271,6 +1318,10 @@ pub fn run() {
             save_settings,
             open_settings,
             open_log_dir,
+            // B2: o relatório de diagnóstico em texto. Só o Painel o cita
+            // (capabilities/default.json) — a página do WhatsApp Web não tem
+            // como pedir o log, nem redigido.
+            diagnostico::diagnostico_texto,
             set_always_on_top,
             ai::ai_complete,
             ai::ai_status,

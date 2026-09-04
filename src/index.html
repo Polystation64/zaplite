@@ -86,6 +86,20 @@
     background:#fff;border-radius:50%;transition:.2s}
   .sw input:checked + label{background:var(--accent)}
   .sw input:checked + label:before{transform:translateX(18px)}
+  /* B1 — a área do que AINDA NÃO EXISTE. Fica visualmente longe da grade que
+     funciona: rótulo próprio, cartão apagado, sem interruptor e sem cursor de
+     clique. O objetivo é que o olho separe "funciona" de "intenção" antes de
+     ler qualquer palavra. */
+  .plan-sep{margin-top:34px;padding-top:20px;border-top:1px dashed var(--line-2)}
+  .plan-sep h2{font-family:'Cascadia Mono','Consolas',ui-monospace,monospace;font-size:11px;
+    letter-spacing:.12em;color:var(--muted);font-weight:700;margin-bottom:6px}
+  .plan-sep .plan-hint{font-size:12.5px;color:var(--muted);line-height:1.6;max-width:640px;margin-bottom:16px}
+  .cell.plan{opacity:.5;background:transparent;border-style:dashed;cursor:default;
+    user-select:none}
+  .cell.plan:hover{border-color:var(--line)}
+  .cell.plan h3,.cell.plan p{color:var(--muted)}
+  .cell.plan .foot{justify-content:flex-start;gap:8px}
+  .badge.plan{color:#94a3b8;border-color:rgba(148,163,184,.4)}
 
   /* aba personalização */
   .rows{display:flex;flex-direction:column;gap:16px;max-width:620px}
@@ -161,6 +175,15 @@
 
   <section class="page active" id="page-mods">
     <div class="grid" id="modGrid"></div>
+    <div class="plan-sep" id="modPlanSec" hidden>
+      <h2 id="modPlanTitulo">AINDA NÃO EXISTEM</h2>
+      <p class="plan-hint">
+        Estes são o roteiro, não o produto: <b style="color:var(--txt)">não há código para eles ainda</b>,
+        por isso não têm interruptor. Ficam aqui para você saber o que está no caminho —
+        e para o painel nunca prometer o que o app não entrega.
+      </p>
+      <div class="grid" id="modPlanGrid"></div>
+    </div>
   </section>
 
   <section class="page" id="page-notif">
@@ -549,6 +572,24 @@
             abrir pasta
           </button>
         </p>
+        <p style="font-size:12.5px;line-height:1.6;color:var(--muted);margin-top:12px">
+          Mais rápido que anexar arquivo: o botão abaixo monta um relatório de texto e copia
+          para a área de transferência — é só colar no e-mail.
+          <button id="zl-copia-diag" type="button"
+            style="margin-left:6px;background:rgba(255,255,255,.08);border:none;color:var(--txt);
+                   cursor:pointer;font-size:11px;font-weight:700;padding:3px 9px;border-radius:7px">
+            copiar diagnóstico
+          </button>
+        </p>
+        <p style="font-size:12px;line-height:1.6;color:var(--muted);margin-top:8px">
+          Vai nele: versão do app, versão do Windows e do WebView2, o estado da conexão,
+          quais módulos estão ligados, se IA e Whisper estão configurados e as últimas 200
+          linhas técnicas do log. <b style="color:var(--txt)">Não vai</b> nenhuma mensagem,
+          nenhum contato e nenhuma chave de API — endereços de sites de terceiros, números
+          longos e identificadores de conversa são removidos antes de copiar. O próprio texto
+          copiado começa dizendo isso, para quem receber também saber.
+        </p>
+        <p id="zl-diag-aviso" style="font-size:12px;color:var(--muted);margin-top:6px;min-height:16px"></p>
         <p id="zl-versao" style="font-size:12px;color:var(--muted);margin-top:14px"></p>
       </div>
     </div>
@@ -623,6 +664,47 @@
       try { await invoke("open_log_dir"); }
       catch (e) { bp.textContent = "falhou"; setTimeout(()=>{ bp.textContent = "abrir pasta"; }, 1600); }
     };
+    /* B2 — relatório de diagnóstico. O texto inteiro é montado no Rust
+       (`src-tauri/src/diagnostico.rs`), que é quem tem acesso ao log e ao
+       settings.json — e quem faz a redação. Aqui só se copia: se o Painel
+       montasse o texto, cada campo novo do log viraria uma decisão de
+       privacidade tomada no lugar errado. */
+    const bd = document.getElementById("zl-copia-diag");
+    const av = document.getElementById("zl-diag-aviso");
+    if (bd) bd.onclick = async () => {
+      const rotulo = bd.textContent;
+      bd.disabled = true; bd.textContent = "montando…";
+      if (av) { av.textContent = ""; av.style.color = "var(--muted)"; }
+      try {
+        const txt = await invoke("diagnostico_texto");
+        try { await navigator.clipboard.writeText(txt); }
+        catch (_) {
+          // Se a ativação do clique tiver expirado durante a montagem, o
+          // caminho velho ainda funciona. Falhar aqui deixaria o usuário com
+          // um botão que "deu certo" e uma área de transferência vazia.
+          const ta = document.createElement("textarea");
+          ta.value = txt;
+          ta.setAttribute("readonly", "");
+          ta.style.position = "fixed"; ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          ta.select();
+          const ok = document.execCommand("copy");
+          ta.remove();
+          if (!ok) throw new Error("a área de transferência recusou o texto");
+        }
+        bd.textContent = "copiado!";
+        if (av) av.textContent = "relatório na área de transferência (" +
+          txt.split("\n").length + " linhas). Cole no e-mail.";
+      } catch (e) {
+        bd.textContent = "falhou";
+        if (av) {
+          av.textContent = "não deu certo: " + (e && e.message ? e.message : e);
+          av.style.color = "var(--erro, #ff6b6b)";
+        }
+      }
+      setTimeout(()=>{ bd.textContent = rotulo; bd.disabled = false; }, 2200);
+    };
+
     const v = document.getElementById("zl-versao");
     if (v && window.__TAURI__ && window.__TAURI__.app && window.__TAURI__.app.getVersion) {
       window.__TAURI__.app.getVersion().then(x => { v.textContent = "ZapLite " + x; }).catch(()=>{});
@@ -721,8 +803,10 @@
     invoke("atualizacao_estado").then(pintar).catch(()=>{});
   })();
 
-  // Catálogo dos 30 módulos (id casa com o bundle.js). Nem todos têm código
-  // ativo ainda; os que faltam ficam como "planejado" mas já aparecem no painel.
+  // Catálogo completo (id casa com o bundle.js). É ROTEIRO, não inventário do
+  // que funciona: quem decide isso é `IMPLEMENTADOS`, logo abaixo. O que não
+  // está lá sai da grade principal e vai para a área "ainda não existem", sem
+  // interruptor. A lista fica inteira de propósito — ela vale como plano.
   const CATALOG = [
     {id:"unsavedSend", n:1,  t:"Número não salvo", d:"Envie mensagem digitando o número, sem salvar contato.", tag:""},
     {id:"scheduleSend",n:2,  t:"Agendar mensagem", d:"Programe envios por data e hora (app precisa estar aberto).", tag:"warn"},
@@ -760,6 +844,21 @@
     {id:"autoTranscribe", n:34, t:"Transcrever áudio automaticamente", d:"Áudios que chegarem com a conversa aberta são transcritos sozinhos, um de cada vez. Custa CPU e alguns segundos por áudio, e obter o som marca a mensagem como ouvida — por isso vem desligado.", tag:"local"},
   ];
 
+  /* B1 — os ids que REALMENTE têm código. Levantados um a um dos 14
+     `reg({ id: … })` de `src-tauri/injection/bundle.js`; os outros 20 do
+     catálogo acima não aparecem em lugar nenhum do bundle nem do Rust
+     (conferido id por id). Interruptor que não liga nada é promessa falsa, e
+     promessa falsa contamina a confiança até no que funciona — por isso a
+     separação é estrutural aqui, não um rótulo no cartão.
+
+     MANUTENÇÃO: ao implementar um módulo no bundle, mova o id para cá. Ele sai
+     sozinho da área de planejados e ganha interruptor. */
+  const IMPLEMENTADOS = new Set([
+    "unsavedSend","antiDelete","transcribe","summarize","draftReply","audioSpeed",
+    "alwaysOnTop","theme","declutter","privacyBlur","nsfwBlur","autoTranscribe",
+    "smartNotify","contextMenu",
+  ]);
+
   const PALETTE = ["#22d3aa","#7c3aed","#0ea5e9","#f43f5e","#f59e0b","#10b981","#e879f9","#f8fafc"];
   let S = {};
 
@@ -772,9 +871,16 @@
 
   function renderMods(){
     const grid = document.getElementById("modGrid");
+    const planGrid = document.getElementById("modPlanGrid");
+    const planSec = document.getElementById("modPlanSec");
     grid.innerHTML = "";
+    planGrid.innerHTML = "";
     S.modules = S.modules || {};
-    CATALOG.forEach(m=>{
+
+    const prontos = CATALOG.filter(m => IMPLEMENTADOS.has(m.id));
+    const planejados = CATALOG.filter(m => !IMPLEMENTADOS.has(m.id));
+
+    prontos.forEach(m=>{
       const on = !!S.modules[m.id];
       const cell = document.createElement("div");
       cell.className = "cell" + (on?" on":"");
@@ -792,6 +898,29 @@
         cell.classList.toggle("on", e.target.checked);
       });
     });
+
+    // Planejados: cartão apagado, SEM `<input>` nenhum. Não existe interruptor
+    // para clicar por engano, e nada aqui escreve em `S.modules` — o que o
+    // usuário desligar (ou tiver ligado numa versão antiga) fica exatamente
+    // como está, porque também não faz diferença nenhuma.
+    planejados.forEach(m=>{
+      const cell = document.createElement("div");
+      cell.className = "cell plan";
+      cell.title = "Planejado: ainda não existe código para este módulo.";
+      cell.innerHTML = `
+        <span class="idx">${String(m.n).padStart(2,"0")}</span>
+        <h3>${m.t}</h3>
+        <p>${m.d}</p>
+        <div class="foot">
+          <span class="badge plan">planejado</span>
+          ${tag(m.tag)}
+        </div>`;
+      planGrid.appendChild(cell);
+    });
+
+    planSec.hidden = planejados.length === 0;
+    document.getElementById("modPlanTitulo").textContent =
+      "AINDA NÃO EXISTEM — " + planejados.length + " DE " + CATALOG.length;
   }
 
   function renderCustom(){
