@@ -1090,8 +1090,10 @@ pub fn pin_toast(app: AppHandle, id: String) -> Result<String, String> {
 #[tauri::command]
 pub fn mute_chat(app: AppHandle, id: String, chat_id: String, name: String) -> Result<(), String> {
     if !chat_id.is_empty() {
-        let novo = com_chat_silenciado(crate::read_settings(&app), &chat_id, &name);
-        crate::write_settings(&app, novo)?;
+        crate::atualizar_settings(&app, true, |s| {
+            *s = com_chat_silenciado(s.clone(), &chat_id, &name);
+            Ok(())
+        })?;
     }
     close_toast(app, id)
 }

@@ -43,7 +43,7 @@ export function registrarAutoTranscrever() {
       };
       const marcarFeito = (b) => {
         const id = idDaBolha(b);
-        if (id) self._feitos.add(id);
+        if (id) { self._feitos.add(id); while (self._feitos.size > 2000) self._feitos.delete(self._feitos.values().next().value); }
       };
       const jaFeito = (b) => {
         const id = idDaBolha(b);

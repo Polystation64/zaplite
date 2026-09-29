@@ -1,4 +1,5 @@
-import { bolhaDe, ehApagada, imagemDaBolha, textoDaBolha } from "../bolhas.js";
+import { bolhaDe, ehApagada, imagemDaBolha, selecaoNaBolha, textoDaBolha } from "../bolhas.js";
+import { capturarDestino, inserirSugestao } from "../assistencia.js";
 import { ai, cfgIa } from "../ia.js";
 import { ehBolhaDeAudio, salvarArquivo, transcreverBolha } from "../midia.js";
 import { css, dropCss, moduloPorId, on, reg, settings } from "../nucleo.js";
@@ -81,6 +82,8 @@ export function registrarMenuContexto() {
         ev.stopPropagation();
 
         const texto = textoDaBolha(bolha);
+        // Lida AGORA: o clique no item do menu desfaz a seleção.
+        const selecao = selecaoNaBolha(bolha, window.getSelection());
         // V2: nada de `querySelector("audio")` aqui — o mesmo helper do botão
         // da bolha decide o que é áudio e de onde vêm os bytes. Seletor
         // duplicado é o que faz um cisma do WhatsApp quebrar os dois de uma vez.
@@ -183,11 +186,18 @@ export function registrarMenuContexto() {
           ]);
         }
 
+        if (selecao) {
+          itens.push([
+            "⧉",
+            "Copiar seleção",
+            guarded(() => navigator.clipboard.writeText(selecao), "Copiar"),
+          ]);
+        }
         if (texto) {
           itens.push([
             "⧉",
-            "Copiar texto",
-            () => navigator.clipboard.writeText(texto).catch(() => {}),
+            selecao ? "Copiar mensagem inteira" : "Copiar texto",
+            guarded(() => navigator.clipboard.writeText(texto), "Copiar"),
           ]);
           if (on("translate")) {
             itens.push([
@@ -200,19 +210,23 @@ export function registrarMenuContexto() {
             "✍",
             "Responder com sugestão da IA",
             guarded(async () => {
+              // Destino capturado ANTES da espera pela IA: se a conversa mudar
+              // ou houver texto seu na caixa, nada é inserido (a sugestão vai
+              // para o painel). Mesmo caminho da Resposta assistida.
+              const alvo = capturarDestino();
               showPanel("Rascunho", "Escrevendo…");
               const tom = settings.aiTone || "direto, amigável e claro";
               const r = await ai(
                 `Você sugere UMA resposta curta de WhatsApp em português do Brasil, no tom ${tom}. Responda apenas com o texto da mensagem.`,
                 "Responder a esta mensagem:\n" + texto
               );
-              const cx = document.querySelector('div[contenteditable="true"][data-tab]');
-              if (cx) {
-                cx.focus();
-                document.execCommand("insertText", false, r.trim());
-                const p = document.getElementById("zl-panel");
-                if (p) p.remove();
-              } else showPanel("Rascunho", r);
+              try {
+                inserirSugestao(alvo, r);
+              } catch (e) {
+                return showPanel("Sugestão preservada", e.message + "\n\n" + r.trim());
+              }
+              const p = document.getElementById("zl-panel");
+              if (p) p.remove();
             }, "Sugestão"),
           ]);
           if (on("scamDetect")) {

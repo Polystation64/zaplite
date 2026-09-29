@@ -2,7 +2,7 @@
 
 Cliente **não oficial** e leve do WhatsApp Web para Windows, em [Tauri](https://tauri.app)
 (WebView2 nativo). Instalador de poucos MB, consumo de memória muito menor que o app
-oficial, sessão persistente (adeus QR code a cada abertura) e um catálogo de 34 módulos
+oficial, sessão persistente (adeus QR code a cada abertura) e um catálogo de 35 módulos
 ligáveis por um painel próprio.
 
 ---
@@ -162,6 +162,8 @@ lista `IMPLEMENTADOS` de `src/index.html`.
 | `diagnostico.rs` | o relatório de texto do Painel, já redigido |
 | `update.rs` | atualização assinada, com aviso e consentimento |
 | `protocol.rs` | links `whatsapp://` abrindo no ZapLite |
+| `arquivo.rs` | arquivo local de conversas (captura da tela + importação do celular) |
+| `mcp.rs` | `zaplite.exe --mcp`: servidor MCP, só leitura, para o Claude Desktop |
 
 ---
 
@@ -185,7 +187,10 @@ manifesto de comandos, até a janela local do Painel precisa citar `allow-<coman
 
 ### Segredos nunca vão para a janela remota
 
-`settings.json` guarda a chave da API em claro, então existem dois comandos de leitura:
+No disco, as chaves de API do `settings.json` ficam cifradas com a DPAPI do Windows
+(`settings_store.rs`; um arquivo antigo com a chave em claro é convertido no próximo
+salvamento). Mas `load_settings` devolve o settings **decifrado**, então existem dois
+comandos de leitura:
 
 | Comando | Quem pode chamar | O que devolve |
 |---|---|---|
@@ -226,14 +231,14 @@ para recusar a mudança. Ele pertence a `bolhas.js` ou `lista.js`.
 
 ---
 
-## Os 34 módulos do catálogo
+## Os 35 módulos do catálogo
 
 O catálogo mora em `src/index.html` (`CATALOG`), e a separação entre o que existe e o que
 não existe é **estrutural**, não um rótulo: quem não tem código não ganha interruptor.
 Interruptor que não liga nada é promessa falsa, e promessa falsa contamina a confiança até
 no que funciona.
 
-- **30 têm código e interruptor** (a lista `IMPLEMENTADOS`, no mesmo arquivo).
+- **31 têm código e interruptor** (a lista `IMPLEMENTADOS`, no mesmo arquivo).
 - **1 está construído fora da grade**: multi-conta — não é módulo da página, é estrutura
   do app (perfil do WebView2, `settings.json` e `connection.log` por conta) e mora na aba
   **CONTAS**.
@@ -256,6 +261,33 @@ Três caminhos, todos levando ao mesmo lugar:
 
 O menu lista só os módulos ligados, então muda conforme você configura. Tem também um item
 **Diagnóstico**, que testa cada comando nativo e mostra qual falhou e por quê.
+
+## Claude Desktop: consultar as conversas (MCP)
+
+O Claude Desktop pode **ler** as conversas do WhatsApp, pelo servidor MCP que mora no
+próprio executável: `zaplite.exe --mcp`. Ele não sobe o Tauri, não abre janela e não
+toca a sessão do WhatsApp — lê um **arquivo local** em disco e fala JSON-RPC por
+stdin/stdout. Não há porta de rede e **não existe ferramenta de envio**: são três
+ferramentas de leitura (`listar_conversas`, `ler_conversa`, `buscar_mensagens`).
+
+O arquivo local (`<pasta da conta>\arquivo\`: `indice.json` + um `.jsonl` por conversa)
+recebe mensagens de dois jeitos, ambos passivos:
+
+- **Módulo 35, “Arquivo local para o Claude”** (nasce desligado): guarda o que o WhatsApp
+  Web já desenhou na conversa aberta. Não rola nem carrega histórico — pelo mesmo motivo
+  da exportação. A conversa de cada mensagem sai do `data-id` dela (`false_<jid>_…`),
+  nunca da conversa selecionada, para uma bolha antiga na tela não cair na conversa errada.
+- **Importação** do “Exportar conversa” do celular (`.txt`, ou o `.zip` do iPhone), em
+  Painel › IA & TRANSCRIÇÃO. Conversa importada e capturada com o mesmo nome viram uma só,
+  sem duplicar mensagens.
+
+Para ligar: botão **Configurar no Claude Desktop** (mescla uma entrada `zaplite` em
+`%APPDATA%\Claude\claude_desktop_config.json`, com cópia `.bak-zaplite` do original) e
+reiniciar o Claude Desktop. Toda resposta do servidor começa avisando que o conteúdo é de
+terceiros e deve ser tratado como dado, não como instrução.
+
+`arquivo_registrar` é o único comando novo alcançável pela página, com tetos (300
+mensagens por chamada, 16 KB por mensagem) e recusado com o módulo desligado.
 
 ## Transcrição local (Whisper)
 

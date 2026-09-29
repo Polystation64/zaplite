@@ -51,11 +51,16 @@ export function showPanel(title, body, acoes) {
     acoes.forEach(([rotulo, fn]) => {
       const b = document.createElement("button");
       b.textContent = rotulo;
-      b.onclick = () => {
+      b.onclick = async () => {
+        if (b.disabled) return;
+        b.disabled = true;
         try {
-          fn();
+          await fn();
         } catch (e) {
           console.error("[ZapLite] ação do painel falhou:", e);
+          showPanel("Nao foi possivel concluir", (e && e.message) || String(e));
+        } finally {
+          b.disabled = false;
         }
       };
       barra.appendChild(b);

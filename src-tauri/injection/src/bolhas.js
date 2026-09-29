@@ -80,12 +80,18 @@ export function bolhasEm(raiz) {
     return [];
   }
   const out = [];
+  const vistos = new Set();
+  const aceitos = new Set();
   for (const el of achadas) {
     if (!ehBolha(el)) continue;
-    if (out.indexOf(el) >= 0) continue;
-    // se já temos um ancestral dela na lista, ela é parte de uma bolha
-    if (out.some((j) => j !== el && j.contains(el))) continue;
-    for (let i = out.length - 1; i >= 0; i--) if (el.contains(out[i])) out.splice(i, 1);
+    if (vistos.has(el)) continue;
+    vistos.add(el);
+    // querySelectorAll retorna ordem de documento: ancestrais vêm primeiro.
+    // Caminhar pela ascendencia evita comparar todos os pares de bolhas.
+    let pai = el.parentElement;
+    while (pai && !aceitos.has(pai)) pai = pai.parentElement;
+    if (pai) continue;
+    aceitos.add(el);
     out.push(el);
   }
   return out;
@@ -96,6 +102,12 @@ export function bolhasVisiveis() {
   const dentro = p ? bolhasEm(p) : [];
   // Fallback: se o painel mudar de nome, ainda achamos as bolhas soltas.
   return dentro.length ? dentro : bolhasEm(document);
+}
+
+/** Apenas o compositor da conversa, nunca as caixas de busca. */
+export function compositorDaConversa() {
+  return document.querySelector('#main footer [contenteditable="true"][role="textbox"]') ||
+    document.querySelector('#main footer [contenteditable="true"]');
 }
 /** A bolha que contém `el` (para `closest`, nos módulos de áudio e menu). */
 export function bolhaDe(el) {
@@ -161,6 +173,45 @@ export function textoDaBolha(bolha) {
       }
     }
     return "";
+  } catch (_) {
+    return "";
+  }
+}
+
+/* O jid da conversa dentro do `data-id` da mensagem: `false_<jid>_<id>`
+   (`true_` quando é nossa; grupos têm um `_<participante>` no fim). É a
+   segunda fonte da identidade da conversa aberta, para quando a linha dela
+   não está desenhada na lista virtualizada (aberta por busca, link, arquivada,
+   lista rolada). Formato conhecido do WhatsApp Web, NÃO medido na sessão real
+   deste projeto — se mudar, `jidDoIdDeMensagem` devolve "" e quem chama cai
+   na recusa, que é a direção segura. */
+const JID_NO_ID_RE = /^(?:true|false)_([^_@\s]+@[a-z.]+)(?:_|$)/;
+export function jidDoIdDeMensagem(id) {
+  const m = JID_NO_ID_RE.exec(String(id || ""));
+  return m ? m[1] : "";
+}
+
+/** Jid da conversa aberta, lido das bolhas visíveis (a mais recente primeiro). */
+export function chatIdDasBolhas() {
+  const bs = bolhasVisiveis();
+  for (let i = bs.length - 1; i >= 0; i--) {
+    const jid = jidDoIdDeMensagem(idDaBolha(bs[i]));
+    if (jid) return jid;
+  }
+  return "";
+}
+
+/** O trecho que o usuário selecionou DENTRO de `bolha`, ou "" se não há
+ * seleção ali. Seleção que atravessa a borda da bolha (pega hora, outra
+ * mensagem, a lista) não conta: nesse caso quem chama cai no texto inteiro.
+ * Precisa ser lida no `contextmenu` — o clique no item do menu desfaz a
+ * seleção antes de a ação rodar. */
+export function selecaoNaBolha(bolha, sel) {
+  if (!bolha) return "";
+  try {
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return "";
+    if (!bolha.contains(sel.getRangeAt(0).commonAncestorContainer)) return "";
+    return sel.toString().trim();
   } catch (_) {
     return "";
   }

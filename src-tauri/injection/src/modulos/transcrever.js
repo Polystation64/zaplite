@@ -1,3 +1,4 @@
+import { observarTela } from "../tela.js";
 import { BOLHA_MIOLO, bolhasVisiveis } from "../bolhas.js";
 import { ehBolhaDeAudio, mostrarTranscricaoNaBolha, transcreverBolha } from "../midia.js";
 import { reg } from "../nucleo.js";
@@ -8,7 +9,7 @@ export function registrarTranscrever() {
   reg({
     id: "transcribe",
     apply() {
-      if (this._timer) return;
+      if (this._parar) return;
       const inject = () => {
         bolhasVisiveis().forEach((bubble) => {
           if (bubble.querySelector(".zl-tr-btn") || !ehBolhaDeAudio(bubble)) return;
@@ -16,11 +17,14 @@ export function registrarTranscrever() {
           b.className = "zl-tr-btn";
           b.textContent = "📝 Transcrever";
           b.onclick = async () => {
+            if (b.disabled) return;
+            b.disabled = true;
             b.textContent = "⏳ ...";
             try {
               mostrarTranscricaoNaBolha(bubble, await transcreverBolha(bubble));
               b.remove();
             } catch (e) {
+              b.disabled = false;
               b.textContent = "📝 Transcrever";
               // A7: "ainda não instalado" não é erro, é um passo que falta.
               if (ehFaltaDeInstalacao(e)) avisarInstalacaoDaTranscricao(e);
@@ -30,11 +34,11 @@ export function registrarTranscrever() {
           (bubble.querySelector(BOLHA_MIOLO) || bubble).appendChild(b);
         });
       };
-      this._timer = setInterval(inject, 1500);
+      this._parar = observarTela(inject);
     },
     revert() {
-      clearInterval(this._timer);
-      this._timer = null;
+      if (this._parar) this._parar();
+      this._parar = null;
       document.querySelectorAll(".zl-tr-btn").forEach((e) => e.remove());
     },
   });

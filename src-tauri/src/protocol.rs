@@ -2,10 +2,12 @@
 
    O caminho inteiro, de ponta a ponta:
 
+   ```text
      navegador → Windows → `zaplite.exe "whatsapp://send?phone=…"`
        → o plugin de instância única entrega os argv à instância VIVA
        → `rotear` interpreta, guarda o alvo e traz a janela para a frente
        → o bundle pega o alvo (`take_pending_deeplink`) e abre a conversa
+   ```
 
    Três decisões que valem a leitura:
 

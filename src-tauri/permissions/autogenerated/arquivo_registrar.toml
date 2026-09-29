@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-arquivo-registrar"
+description = "Enables the arquivo_registrar command without any pre-configured scope."
+commands.allow = ["arquivo_registrar"]
+
+[[permission]]
+identifier = "deny-arquivo-registrar"
+description = "Denies the arquivo_registrar command without any pre-configured scope."
+commands.deny = ["arquivo_registrar"]

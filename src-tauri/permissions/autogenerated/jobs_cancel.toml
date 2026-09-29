@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-jobs-cancel"
+description = "Enables the jobs_cancel command without any pre-configured scope."
+commands.allow = ["jobs_cancel"]
+
+[[permission]]
+identifier = "deny-jobs-cancel"
+description = "Denies the jobs_cancel command without any pre-configured scope."
+commands.deny = ["jobs_cancel"]

@@ -86,6 +86,7 @@ function carregar() {
 async function gravar() {
   try {
     await invoke("save_module_data", { chave: "reminders", valor: pendentes });
+    settings.reminders = pendentes;
   } catch (e) {
     showPanel(
       "O lembrete NÃO foi guardado",

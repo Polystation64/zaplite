@@ -156,6 +156,10 @@ const MODULOS_PADRAO = {
   // lugar do usuário é decisão dele, tomada no Painel depois de ler o que o
   // módulo faz — nunca um padrão de fábrica.
   scheduleSend: false,
+  // `localArchive` nasce DESLIGADO: ligado, as mensagens das conversas abertas
+  // passam a ser gravadas em disco para o Claude Desktop consultar. É uma
+  // decisão sobre as conversas dele (e dos contatos), não um padrão de fábrica.
+  localArchive: false,
 };
 
 export async function applyAll() {

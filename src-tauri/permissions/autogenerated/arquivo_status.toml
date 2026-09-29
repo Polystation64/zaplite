@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-arquivo-status"
+description = "Enables the arquivo_status command without any pre-configured scope."
+commands.allow = ["arquivo_status"]
+
+[[permission]]
+identifier = "deny-arquivo-status"
+description = "Denies the arquivo_status command without any pre-configured scope."
+commands.deny = ["arquivo_status"]

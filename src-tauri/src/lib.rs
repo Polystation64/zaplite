@@ -6,6 +6,10 @@ mod notify;
 mod protocol;
 mod update;
 mod whisper;
+mod settings_store;
+mod jobs;
+mod arquivo;
+mod mcp;
 
 /// Windows: impede que o processo filho (ffmpeg/whisper-cli) abra uma
 /// janela de console piscando na frente do usuário. 0x0800_0000.
@@ -109,6 +113,11 @@ pub(crate) fn create_main_window(app: &AppHandle) -> tauri::Result<()> {
         .inner_size(1280.0, 800.0)
         .min_inner_size(720.0, 520.0)
         .user_agent(CHROME_UA)
+        // Arrastar arquivo para a conversa. Com o handler nativo ligado (o
+        // padrão do Tauri), o wry registra o próprio `IDropTarget` na janela e
+        // engole o arraste: o WhatsApp nunca recebe `dragover`/`drop` e o
+        // cursor fica em "proibido". Nada no app escuta `tauri://drag-drop`.
+        .disable_drag_drop_handler()
         // K12: ciclo de vida do DOCUMENTO. No WebView2 isto vem de
         // `ContentLoading` (Started) e `NavigationCompleted` (Finished) — e o
         // `NavigationCompleted` dispara também quando a navegação FALHA e a
@@ -332,11 +341,84 @@ fn arquivar_settings_invalido(p: &Path) -> Option<PathBuf> {
     }
 }
 
+static SETTINGS_GATE: Mutex<()> = Mutex::new(());
+
+/// Chaves de API que a DPAPI não abriu na última leitura. `gravar_settings`
+/// as devolve ao disco intactas (ver `settings_store::preservar_ilegiveis`):
+/// voltar para a conta do Windows certa recupera a chave.
+static CHAVES_ILEGIVEIS: Mutex<Vec<settings_store::Ilegivel>> = Mutex::new(Vec::new());
+
+/// Uma vez por processo, como o caminho do arquivo inválido: linha no
+/// `connection.log`, faixa no Painel e aviso na tela. Antes era silêncio — a
+/// configuração inteira sumia e toda gravação falhava sem explicação.
+fn relatar_chaves_ilegiveis(app: &AppHandle, ilegiveis: &[settings_store::Ilegivel]) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static JA_RELATOU: AtomicBool = AtomicBool::new(false);
+    if JA_RELATOU.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let campos: Vec<&str> = ilegiveis.iter().map(|i| i.campo.as_str()).collect();
+    let motivo = ilegiveis.first().map(|i| i.motivo.as_str()).unwrap_or("");
+    connection::note_diag(app, &format!("chave(s) de API ilegíveis ({}): {motivo}", campos.join(", ")));
+    let recado = format!(
+        "Não consegui abrir {} chave(s) de API guardada(s) ({}). Isso acontece quando o \
+         settings.json veio de outro usuário ou de outro computador — a proteção do Windows só \
+         abre a chave na conta que a gravou. O resto da configuração foi carregado normalmente. \
+         Digite a chave de novo no Painel (IA & TRANSCRIÇÃO); até lá, a chave antiga fica \
+         guardada como estava.",
+        campos.len(),
+        campos.join(", ")
+    );
+    *SETTINGS_QUEBRADO.lock().unwrap_or_else(|e| e.into_inner()) = Some(recado.clone());
+    avisar_settings_quebrado(app, &recado);
+}
+
 pub(crate) fn read_settings(app: &AppHandle) -> Value {
+    let _lock = SETTINGS_GATE.lock().unwrap_or_else(|e| e.into_inner());
+    read_settings_unlocked(app)
+}
+
+/// Identidade do arquivo no disco: (modificação, tamanho, caminho). Muda a
+/// cada gravação (a nossa troca o arquivo inteiro) e a cada edição de fora.
+type Carimbo = (std::time::SystemTime, u64, PathBuf);
+
+/// Última leitura decifrada. Sem ela, CADA `read_settings` (todo toast, toda
+/// chamada de IA, toda transcrição) relia o arquivo, reinterpretava o JSON e
+/// rodava `CryptUnprotectData` por chave — sob a trava global.
+static SETTINGS_CACHE: Mutex<Option<(Carimbo, Value)>> = Mutex::new(None);
+
+fn carimbo_de(p: &Path) -> Option<Carimbo> {
+    let m = fs::metadata(p).ok()?;
+    Some((m.modified().ok()?, m.len(), p.to_path_buf()))
+}
+
+fn esquecer_settings_em_cache() {
+    *SETTINGS_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+fn read_settings_unlocked(app: &AppHandle) -> Value {
     let p = settings_path(app);
+    let carimbo = carimbo_de(&p);
+    if let Some(c) = &carimbo {
+        if let Some((guardado, v)) = SETTINGS_CACHE.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            if guardado == c {
+                return v.clone();
+            }
+        }
+    }
     let bruto = fs::read_to_string(&p).ok();
     match interpretar_settings(bruto.as_deref()) {
-        LeituraSettings::Ok(v) => v,
+        LeituraSettings::Ok(v) => {
+            let (v, ilegiveis) = settings_store::decode(v);
+            if !ilegiveis.is_empty() {
+                relatar_chaves_ilegiveis(app, &ilegiveis);
+            }
+            *CHAVES_ILEGIVEIS.lock().unwrap_or_else(|e| e.into_inner()) = ilegiveis;
+            if let Some(c) = carimbo {
+                *SETTINGS_CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some((c, v.clone()));
+            }
+            v
+        }
         LeituraSettings::Ausente => json!({}),
         LeituraSettings::Invalido(motivo) => {
             // O relato acontece UMA vez por processo. `read_settings` é
@@ -522,15 +604,29 @@ fn filtrar_publicas(completo: &Value) -> Value {
 }
 
 #[tauri::command]
-fn save_settings(app: AppHandle, settings: Value) -> Result<(), String> {
-    write_settings(&app, settings)
+fn save_settings(app: AppHandle, settings: Value, baseline: Value) -> Result<Value, String> {
+    atualizar_settings(&app, true, |current| {
+        *current = settings_store::merge(&baseline, &settings, current)?;
+        Ok(())
+    })
 }
 
 /// Grava o settings.json e avisa a janela principal. Usado pelo comando
 /// `save_settings` (Painel) e pelo OAuth do OpenRouter, que precisa guardar a
 /// chave obtida sem passar por lugar nenhum do lado JS.
-pub(crate) fn write_settings(app: &AppHandle, settings: Value) -> Result<(), String> {
-    gravar_settings(app, settings)?;
+pub(crate) fn atualizar_settings(
+    app: &AppHandle, notificar: bool, update: impl FnOnce(&mut Value) -> Result<(), String>,
+) -> Result<Value, String> {
+    let settings = {
+        let _lock = SETTINGS_GATE.lock().unwrap_or_else(|e| e.into_inner());
+        let mut current = read_settings_unlocked(app);
+        update(&mut current)?;
+        let revision = current["_revision"].as_u64().unwrap_or(0).saturating_add(1);
+        current["_revision"] = json!(revision);
+        gravar_settings(app, &current)?;
+        current
+    };
+    if !notificar { return Ok(settings); }
     // Avisa a janela principal para reaplicar módulos sem recarregar
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.eval("window.__ZAPLITE_RELOAD__ && window.__ZAPLITE_RELOAD__()");
@@ -539,14 +635,14 @@ pub(crate) fn write_settings(app: &AppHandle, settings: Value) -> Result<(), Str
     // `__ZAPLITE_RELOAD__` o alcança. Reaplicar aqui é o que faz o Painel
     // valer sem reiniciar o app. Nunca propaga erro (ver `aplicar_atalhos`).
     aplicar_atalhos(app);
-    Ok(())
+    Ok(settings)
 }
 
 /// Grava sem disparar `__ZAPLITE_RELOAD__`. É o caminho dos dados que a
 /// PRÓPRIA página acabou de escrever (uma nota, um lembrete): ela já tem o
 /// valor na mão, e reaplicar os 24 módulos a cada tecla salva seria trabalho
 /// pago para desfazer o que o usuário está fazendo na tela.
-fn gravar_settings(app: &AppHandle, settings: Value) -> Result<(), String> {
+fn gravar_settings(app: &AppHandle, settings: &Value) -> Result<(), String> {
     if GRAVACAO_TRAVADA.load(std::sync::atomic::Ordering::SeqCst) {
         return Err(SETTINGS_QUEBRADO
             .lock()
@@ -555,7 +651,14 @@ fn gravar_settings(app: &AppHandle, settings: Value) -> Result<(), String> {
             .unwrap_or_else(|| "o settings.json atual está inválido e não pôde ser arquivado".into()));
     }
     let p = settings_path(app);
-    fs::write(p, serde_json::to_string_pretty(&settings).unwrap()).map_err(|e| e.to_string())
+    let mut stored = settings_store::encode(settings)?;
+    settings_store::preservar_ilegiveis(&mut stored, &CHAVES_ILEGIVEIS.lock().unwrap_or_else(|e| e.into_inner()));
+    // Esquece ANTES e DEPOIS: a próxima leitura sempre vê o que foi gravado,
+    // mesmo que o relógio do sistema de arquivos não tenha andado.
+    esquecer_settings_em_cache();
+    let r = settings_store::atomic_write(&p, &stored);
+    esquecer_settings_em_cache();
+    r
 }
 
 /* ==========================================================================
@@ -633,15 +736,10 @@ fn save_module_data(app: AppHandle, chave: String, valor: Value) -> Result<(), S
             TETO_RAMO / 1024
         ));
     }
-    let mut completo = read_settings(&app);
-    if !completo.is_object() {
-        completo = json!({});
-    }
-    completo
-        .as_object_mut()
-        .ok_or("settings.json não é um objeto")?
-        .insert(chave, valor);
-    gravar_settings(&app, completo)
+    atualizar_settings(&app, false, |completo| {
+        completo.as_object_mut().ok_or("settings.json nao e um objeto")?.insert(chave, valor);
+        Ok(())
+    }).map(|_| ())
 }
 
 const RAMO_NOTAS: &str = "contactNotes";
@@ -694,10 +792,7 @@ fn note_set(app: AppHandle, chat_id: String, texto: String) -> Result<(), String
             texto.chars().count()
         ));
     }
-    let mut completo = read_settings(&app);
-    if !completo.is_object() {
-        completo = json!({});
-    }
+    atualizar_settings(&app, false, |completo| {
     let raiz = completo.as_object_mut().ok_or("settings.json não é um objeto")?;
     let notas = raiz
         .entry(RAMO_NOTAS.to_string())
@@ -711,7 +806,8 @@ fn note_set(app: AppHandle, chat_id: String, texto: String) -> Result<(), String
     } else {
         m.insert(chat_id, json!(texto));
     }
-    gravar_settings(&app, completo)
+    Ok(())
+    }).map(|_| ())
 }
 
 /* ==========================================================================
@@ -936,6 +1032,21 @@ async fn transcribe_audio(
     prompt: Option<String>,
 ) -> Result<String, String> {
     let settings = read_settings(&app);
+    if audio_b64.len() > 48 * 1024 * 1024 { return Err("Audio excede o limite de tamanho (15 minutos em WAV mono).".into()); }
+    let config = serde_json::to_vec(&settings).map_err(|e| e.to_string())?;
+    let key = jobs::fingerprint(&[audio_b64.as_bytes(), prompt.as_deref().unwrap_or("").as_bytes(), &config]);
+    jobs::run("audio", key, transcrever_impl(settings, app, audio_b64, prompt)).await
+}
+
+struct AudioTemp { dir: PathBuf }
+impl Drop for AudioTemp {
+    fn drop(&mut self) {
+        for name in ["audio.wav", "audio.bin"] { let _ = fs::remove_file(self.dir.join(name)); }
+        let _ = fs::remove_dir(&self.dir);
+    }
+}
+
+async fn transcrever_impl(settings: Value, app: AppHandle, audio_b64: String, prompt: Option<String>) -> Result<String, String> {
     let model = settings["whisperModel"].as_str().unwrap_or("").to_string();
     if model.trim().is_empty() {
         return Err(format!(
@@ -999,17 +1110,15 @@ async fn transcribe_audio(
         .decode(audio_b64)
         .map_err(|e| e.to_string())?;
 
-    let tmp = std::env::temp_dir();
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-    let wav = tmp.join(format!("zaplite_{ts}.wav"));
+    let tmp = AudioTemp { dir: std::env::temp_dir().join(format!("zaplite-audio-{:016x}",rand::random::<u64>())) };
+    fs::create_dir(&tmp.dir).map_err(|e| e.to_string())?;
+    let wav = tmp.dir.join("audio.wav");
 
     // A página já manda WAV: `RIFF....WAVE`. Sem ffmpeg, sem conversão.
     let ja_e_wav = bytes.len() > 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE";
-    let bruto = tmp.join(format!("zaplite_{ts}.bin"));
+    let bruto = tmp.dir.join("audio.bin");
     if ja_e_wav {
+        if bytes.len() > 44 + 16000 * 2 * 900 { return Err("Audio acima de 15 minutos. Selecione um trecho menor.".into()); }
         tokio::fs::write(&wav, &bytes).await.map_err(|e| e.to_string())?;
     } else {
         tokio::fs::write(&bruto, &bytes).await.map_err(|e| e.to_string())?;
@@ -1017,9 +1126,10 @@ async fn transcribe_audio(
         #[cfg(windows)]
         cmd_ff.creation_flags(CREATE_NO_WINDOW);
         let ff = cmd_ff
+            .kill_on_drop(true)
             .args(["-y", "-i"])
             .arg(&bruto)
-            .args(["-ar", "16000", "-ac", "1"])
+            .args(["-ar", "16000", "-ac", "1", "-t", "901"])
             .arg(&wav)
             .output()
             .await
@@ -1030,12 +1140,16 @@ async fn transcribe_audio(
         if !ff.status.success() {
             return Err("ffmpeg falhou ao converter o áudio.".into());
         }
+        if fs::metadata(&wav).map_err(|e| e.to_string())?.len() > (16000 * 2 * 900 + 4096) {
+            return Err("Audio acima de 15 minutos. Nenhuma transcricao parcial foi usada.".into());
+        }
     }
 
     let mut cmd_cli = tokio::process::Command::new(&cli);
     #[cfg(windows)]
     cmd_cli.creation_flags(CREATE_NO_WINDOW);
     let out = cmd_cli
+        .kill_on_drop(true)
         .args(["-m", &model, "-l", &lang, "-nt"])
         .args(["-t", &threads.to_string()])
         .args(if prompt_inicial.is_empty() { vec![] } else { vec!["--prompt".to_string(), prompt_inicial.clone()] })
@@ -1100,6 +1214,43 @@ impl MidiasSalvas {
     fn conhece(&self, p: &Path) -> bool {
         self.0.lock().map(|g| g.contains(p)).unwrap_or(false)
     }
+}
+
+/// O que `abrir_arquivo` aceita entregar ao programa padrão do Windows.
+/// Lista de PERMITIDOS, não de proibidos: o comando é alcançável pela página
+/// remota, e o conteúdo gravado veio dela. Qualquer script (XSS, CDN,
+/// extensão) poderia gravar um `.exe`/`.bat`/`.lnk`/`.hta` e pedir para abrir;
+/// uma lista de proibidos sempre esquece uma extensão executável.
+const EXTENSOES_ABRIVEIS: &[&str] = &[
+    "jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif", "avif",
+    "mp4", "m4v", "mov", "webm", "mkv", "avi", "3gp",
+    "mp3", "m4a", "ogg", "opus", "oga", "wav", "aac", "flac", "amr",
+    "pdf", "txt", "csv", "rtf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp",
+];
+
+fn extensao_abrivel(p: &Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| EXTENSOES_ABRIVEIS.contains(&e.to_ascii_lowercase().as_str()))
+        .unwrap_or(false)
+}
+
+/// Mark-of-the-Web: o arquivo veio da internet (`ZoneId=3`). É o que faz o
+/// Windows e o Office tratarem o arquivo como baixado — SmartScreen,
+/// Modo de Exibição Protegido. Gravado pelo Rust, sem isto o arquivo
+/// parecia local e confiável. Melhor esforço: volume sem fluxos alternativos
+/// (FAT, alguns pendrives) só não recebe a marca.
+fn marcar_como_da_internet(p: &Path) {
+    #[cfg(windows)]
+    {
+        let mut ads = p.as_os_str().to_os_string();
+        ads.push(":Zone.Identifier");
+        let _ = fs::write(ads, "[ZoneTransfer]
+ZoneId=3
+");
+    }
+    #[cfg(not(windows))]
+    let _ = p;
 }
 
 /// Nome de arquivo utilizável no Windows a partir de algo que veio da página.
@@ -1179,6 +1330,8 @@ fn escrever_com_progresso(app: &AppHandle, destino: &Path, bytes: &[u8]) -> Resu
         let _ = fs::remove_file(&parcial);
         e.to_string()
     })?;
+    // Todo chamador grava bytes que vieram da página.
+    marcar_como_da_internet(destino);
     Ok(())
 }
 
@@ -1252,6 +1405,7 @@ fn acolher_download(app: AppHandle, origem: PathBuf) {
             );
             return;
         }
+        marcar_como_da_internet(&destino);
         if let Some(reg) = app.try_state::<MidiasSalvas>() {
             reg.registrar(&destino);
         }
@@ -1277,7 +1431,6 @@ async fn save_media(
     app: AppHandle,
     data_b64: String,
     filename: String,
-    perguntar: Option<bool>,
 ) -> Result<Value, String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data_b64)
@@ -1285,13 +1438,13 @@ async fn save_media(
     let nome = nome_seguro(&filename);
     let dir = pasta_padrao_de_download(&app);
 
-    let destino = if perguntar.unwrap_or(true) {
-        match perguntar_onde_salvar(&app, &nome, &dir) {
-            Some(p) => p,
-            None => return Ok(json!({ "cancelado": true })),
-        }
-    } else {
-        dir.join(&nome)
+    // Sempre com diálogo. Existia um `perguntar: false` que gravava direto em
+    // Downloads — nenhum código nosso o usava, e para um script hostil na
+    // página ele era meio caminho de "grave um .exe e abra" (ver
+    // `abrir_arquivo`).
+    let destino = match perguntar_onde_salvar(&app, &nome, &dir) {
+        Some(p) => p,
+        None => return Ok(json!({ "cancelado": true })),
     };
 
     escrever_com_progresso(&app, &destino, &bytes)?;
@@ -1315,6 +1468,10 @@ fn abrir_arquivo(app: AppHandle, caminho: String) -> Result<(), String> {
         .unwrap_or(false);
     if !ok {
         return Err("este caminho não foi salvo pelo ZapLite nesta sessão.".into());
+    }
+    if !extensao_abrivel(&p) {
+        return Err("por segurança, o ZapLite só abre direto fotos, vídeos, áudios e documentos.              Use \"Abrir a pasta\" e abra este arquivo por lá, se confiar nele."
+            .into());
     }
     if !p.is_file() {
         return Err("o arquivo não está mais no disco.".into());
@@ -1397,6 +1554,37 @@ fn origem_para_log(url: &str) -> String {
         format!("{esquema}://<sem host>")
     } else {
         format!("{esquema}://{host}")
+    }
+}
+
+#[cfg(test)]
+mod testes_abrir_arquivo {
+    use super::{extensao_abrivel, marcar_como_da_internet};
+    use std::path::Path;
+
+    /// A página grava o arquivo e pede para abrir: executável nunca passa,
+    /// nem com extensão em maiúscula ou dupla.
+    #[test]
+    fn so_midia_e_documento_abrem_direto() {
+        for ok in ["foto.JPG", "a.pdf", "voz.opus", "planilha.xlsx", "v.mp4"] {
+            assert!(extensao_abrivel(Path::new(ok)), "{ok}");
+        }
+        for nao in ["x.exe", "x.bat", "x.cmd", "x.lnk", "x.hta", "x.ps1", "x.vbs", "x.js", "x.msi",
+                    "x.scr", "x.url", "foto.jpg.exe", "x.docm", "sem-extensao"] {
+            assert!(!extensao_abrivel(Path::new(nao)), "{nao}");
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn arquivo_gravado_recebe_mark_of_the_web() {
+        let p = std::env::temp_dir().join(format!("zaplite-motw-{:x}.txt", rand::random::<u64>()));
+        std::fs::write(&p, "x").unwrap();
+        marcar_como_da_internet(&p);
+        let mut ads = p.as_os_str().to_os_string();
+        ads.push(":Zone.Identifier");
+        assert!(std::fs::read_to_string(ads).unwrap().contains("ZoneId=3"));
+        std::fs::remove_file(p).unwrap();
     }
 }
 
@@ -1928,7 +2116,123 @@ fn alternar_janela(app: &AppHandle) {
     }
 }
 
+/* ==========================================================================
+   ARQUIVO LOCAL PARA O CLAUDE (MCP) — ver `arquivo.rs` e `mcp.rs`.
+   ========================================================================== */
+
+fn pasta_do_arquivo(app: &AppHandle) -> PathBuf {
+    contas::pasta_da_conta(app).join(arquivo::PASTA)
+}
+
+/// A página manda o que o WhatsApp já desenhou na conversa aberta. Alcançável
+/// pela origem remota: por isso os tetos em `arquivo.rs` e esta trava — com o
+/// módulo desligado, nada é gravado, mesmo que um script chame o comando.
+#[tauri::command]
+fn arquivo_registrar(
+    app: AppHandle,
+    conversa: arquivo::ConversaDaPagina,
+    mensagens: Vec<arquivo::MsgDaPagina>,
+) -> Result<usize, String> {
+    let ligado = read_settings(&app)["modules"]["localArchive"].as_bool().unwrap_or(false);
+    if !ligado {
+        return Err("o módulo Arquivo local está desligado.".into());
+    }
+    arquivo::registrar_da_pagina(&pasta_do_arquivo(&app), conversa, mensagens)
+}
+
+#[tauri::command]
+fn arquivo_status(app: AppHandle) -> Value {
+    let mut v = arquivo::status(&pasta_do_arquivo(&app));
+    v["exe"] = json!(std::env::current_exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_default());
+    v["conta"] = json!(contas::ativa());
+    v
+}
+
+/// Importa o "Exportar conversa" do celular (.txt, ou .zip do iPhone). Sem
+/// `nome`, a conversa recebe o nome tirado do nome do arquivo.
+#[tauri::command]
+async fn arquivo_importar(app: AppHandle, nome: Option<String>) -> Result<Value, String> {
+    let escolhido = app
+        .dialog()
+        .file()
+        .set_title("Importar conversa exportada do WhatsApp")
+        .add_filter("Conversa exportada", &["txt", "zip"])
+        .blocking_pick_file()
+        .and_then(|f| f.into_path().ok());
+    let Some(p) = escolhido else {
+        return Ok(json!({ "cancelado": true }));
+    };
+    let texto = arquivo::ler_arquivo_exportado(&p)?;
+    let nome = nome
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| arquivo::nome_pelo_arquivo(&p.to_string_lossy()));
+    let dir = pasta_do_arquivo(&app);
+    tauri::async_runtime::spawn_blocking(move || arquivo::importar(&dir, &nome, &texto))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn arquivo_apagar(app: AppHandle) -> Result<(), String> {
+    arquivo::apagar(&pasta_do_arquivo(&app))
+}
+
+/// Registra o `zaplite.exe --mcp` no Claude Desktop. Mescla no
+/// `claude_desktop_config.json` existente (outros servidores ficam como
+/// estão), guarda uma cópia do original ao lado e recusa mexer num arquivo que
+/// não é JSON válido — perder a configuração do Claude seria pior que o botão
+/// não funcionar.
+#[tauri::command]
+fn arquivo_configurar_claude(app: AppHandle) -> Result<Value, String> {
+    let appdata = std::env::var_os("APPDATA").ok_or("APPDATA não definido.")?;
+    let dir = PathBuf::from(appdata).join("Claude");
+    let cfg = dir.join("claude_desktop_config.json");
+    let mut atual: Value = match fs::read(&cfg) {
+        Ok(b) if !b.is_empty() => serde_json::from_slice(&b).map_err(|e| {
+            format!("o {} não é um JSON válido ({e}); não mexi nele. Corrija-o ou adicione o ZapLite à mão.", cfg.display())
+        })?,
+        _ => json!({}),
+    };
+    if !atual.is_object() {
+        return Err("o claude_desktop_config.json não é um objeto JSON; não mexi nele.".into());
+    }
+    if cfg.exists() {
+        let _ = fs::copy(&cfg, dir.join("claude_desktop_config.json.bak-zaplite"));
+    }
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut args = vec!["--mcp".to_string()];
+    if contas::ativa() != contas::PRINCIPAL {
+        args.push("--conta".into());
+        args.push(contas::ativa().to_string());
+    }
+    let nome_servidor = if contas::ativa() == contas::PRINCIPAL {
+        "zaplite".to_string()
+    } else {
+        format!("zaplite-{}", contas::ativa())
+    };
+    if !atual["mcpServers"].is_object() {
+        atual["mcpServers"] = json!({});
+    }
+    atual["mcpServers"][&nome_servidor] = json!({ "command": exe.to_string_lossy(), "args": args });
+    settings_store::atomic_write(&cfg, &atual)?;
+    let _ = &app;
+    Ok(json!({ "arquivo": cfg.to_string_lossy(), "servidor": nome_servidor }))
+}
+
 pub fn run() {
+    // MCP — `zaplite.exe --mcp` é o servidor de consulta do Claude Desktop, e
+    // NÃO o app: nada de Tauri, janela, plugin ou instância única (que
+    // mandaria a mensagem para o ZapLite aberto e sairia). Lê o arquivo local
+    // de conversas e fala por stdin/stdout. Ver `mcp.rs`.
+    {
+        let args: Vec<String> = std::env::args().collect();
+        if args.iter().skip(1).any(|a| a == "--mcp") {
+            mcp::rodar(&args);
+            return;
+        }
+    }
+
     // 28 — PRIMEIRA linha do processo, antes de qualquer plugin. Tudo que
     // resolve caminho (settings.json, connection.log, perfil do WebView2)
     // pergunta a `contas::ativa()`, e ela precisa estar fixada antes do
@@ -2010,6 +2314,13 @@ pub fn run() {
             note_set,
             escolher_pasta,
             save_media_em,
+            // Arquivo local para o Claude (MCP). `arquivo_registrar` é o único
+            // que a página chama; os outros são do Painel.
+            arquivo_registrar,
+            arquivo_status,
+            arquivo_importar,
+            arquivo_apagar,
+            arquivo_configurar_claude,
             // 27 — só LÊ o que o registro dos atalhos devolveu. Só o Painel o
             // cita; a página do WhatsApp não precisa saber de atalho nenhum.
             atalhos_estado,
@@ -2035,6 +2346,9 @@ pub fn run() {
             ai::ai_test,
             ai::ai_models,
             ai::ai_oauth_openrouter,
+            jobs::jobs_list,
+            jobs::jobs_cancel,
+            jobs::jobs_clear,
             transcribe_audio,
             save_media,
             abrir_arquivo,

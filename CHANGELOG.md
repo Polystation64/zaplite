@@ -17,6 +17,32 @@ Regras, para o aviso nunca mentir:
 
 <!-- Escreva a versão nova AQUI EM CIMA, logo abaixo desta linha. -->
 
+## 0.1.7
+
+Esta versão deixa as operações mais seguras e leves no uso diário.
+
+* Respostas assistidas agora mostram uma prévia e confirmam a conversa antes de inserir texto.
+* Salvamentos concorrentes preservam notas, lembretes e agendamentos; as chaves ficam protegidas no Windows.
+* IA e transcrição ganharam fila, limites, cancelamento, deduplicação e limpeza de arquivos temporários.
+* O monitoramento da tela foi compartilhado para reduzir trabalho repetido.
+* O login pelo navegador do OpenRouter usa OAuth com PKCE.
+* Arrastar arquivos para dentro da conversa voltou a funcionar.
+* No botão direito, com um trecho selecionado, "Copiar seleção" copia só o trecho; a mensagem inteira continua em "Copiar mensagem inteira".
+* "Responder com sugestão da IA", no botão direito, também confere a conversa antes de inserir; se ela mudou ou se já havia texto seu na caixa, a sugestão aparece no painel em vez de ir para a caixa.
+* O modo NSFW borra mídias que chegam com a janela minimizada antes de ela voltar à tela.
+* Desligar a velocidade de áudio agora remove os botões e volta os áudios à velocidade normal.
+* Menos trabalho em segundo plano enquanto você digita.
+* Segurança: "Abrir arquivo" agora abre direto só fotos, vídeos, áudios e documentos; outros tipos ficam no "Abrir a pasta". Os arquivos salvos pelo ZapLite são marcados como baixados da internet, para o Windows avisar ao abrir.
+* Edições no Painel feitas depois de "Salvar e aplicar" (atalhos, regras de notificação) não se perdem mais.
+* Nova Central de tarefas em IA & TRANSCRIÇÃO: veja e cancele pedidos de IA e transcrições em andamento.
+* "Outra versão" da resposta assistida agora gera um texto novo de verdade.
+* A resposta assistida funciona também em conversas abertas pela busca ou por link.
+* "Resumir esta conversa" funciona em conversas longas: resume as mensagens mais recentes que cabem e avisa quantas ficaram de fora.
+* Novo: o Claude Desktop pode consultar suas conversas do WhatsApp (só leitura, nada é enviado). Ligue o módulo "Arquivo local para o Claude", importe o histórico do celular se quiser, e use "Configurar no Claude Desktop" em IA & TRANSCRIÇÃO. O ZapLite só guarda o que já passou pela sua tela, nunca rola as conversas sozinho.
+* Se uma chave de API guardada não puder ser aberta (configuração vinda de outro usuário ou computador), o resto da configuração continua valendo e o ZapLite avisa o que fazer.
+
+Nenhuma mensagem é enviada automaticamente pela IA; o agendamento continua desligado por padrão.
+
 ## 0.1.6
 
 Dezessete módulos novos: o ZapLite saiu de 14 para 31 dos 34 do catálogo.

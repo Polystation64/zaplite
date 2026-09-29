@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-arquivo-importar"
+description = "Enables the arquivo_importar command without any pre-configured scope."
+commands.allow = ["arquivo_importar"]
+
+[[permission]]
+identifier = "deny-arquivo-importar"
+description = "Denies the arquivo_importar command without any pre-configured scope."
+commands.deny = ["arquivo_importar"]

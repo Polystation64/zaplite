@@ -670,13 +670,13 @@ async fn instalar_motor(app: &AppHandle, m: &'static Motor) -> Result<String, St
     // ninguém: aí o caminho do motor recém-instalado é gravado, e o usuário
     // não precisa digitar nada (ele fica visível e editável no Painel).
     fase("configurando");
-    let mut s = crate::read_settings(app);
-    let atual = s["whisperCli"].as_str().unwrap_or("").trim().to_string();
-    let respeitou = !atual.is_empty() && PathBuf::from(&atual).is_file();
-    if !respeitou {
-        s["whisperCli"] = json!(cli.to_string_lossy());
-        crate::write_settings(app, s)?;
-    }
+    let mut respeitou = false;
+    crate::atualizar_settings(app, true, |s| {
+        let atual = s["whisperCli"].as_str().unwrap_or("").trim();
+        respeitou = !atual.is_empty() && PathBuf::from(atual).is_file();
+        if !respeitou { s["whisperCli"] = json!(cli.to_string_lossy()); }
+        Ok(())
+    })?;
 
     Ok(if respeitou {
         format!(
@@ -722,9 +722,10 @@ async fn baixar_modelo(app: &AppHandle, m: &'static Modelo) -> Result<String, St
 }
 
 fn apontar_modelo(app: &AppHandle, p: &Path) -> Result<(), String> {
-    let mut s = crate::read_settings(app);
-    s["whisperModel"] = json!(p.to_string_lossy());
-    crate::write_settings(app, s)
+    crate::atualizar_settings(app, true, |s| {
+        s["whisperModel"] = json!(p.to_string_lossy());
+        Ok(())
+    }).map(|_| ())
 }
 
 /// Troca entre modelos já baixados, sem baixar nada de novo.

@@ -485,6 +485,37 @@
         </div>
         <div class="hint" id="aiTestOut" style="white-space:pre-wrap"></div>
       </div>
+      <div class="field" id="centralTarefas">
+        <label class="k">Central de tarefas</label>
+        <div class="hint" style="margin-top:0">
+          Pedidos de IA e transcrições em andamento e recentes. Cancelar interrompe a espera aqui;
+          o provedor pode já ter contabilizado o uso. Nenhum conteúdo de mensagem aparece nesta lista.
+        </div>
+        <div id="tarefasLista" style="margin-top:10px"></div>
+        <button class="primary" id="tarefasLimpar"
+          style="margin-top:10px;background:transparent;color:var(--muted);border:1px solid var(--line-2)">Limpar concluídas</button>
+      </div>
+      <div class="field" id="claudeMcp">
+        <label class="k">Claude Desktop — consultar suas conversas</label>
+        <div class="hint" style="margin-top:0">
+          O Claude Desktop lê o <b>arquivo local</b> do ZapLite (só leitura, sem ferramenta de envio,
+          sem porta de rede — funciona até com o ZapLite fechado). O arquivo recebe mensagens de dois jeitos:
+          o módulo <b>“Arquivo local para o Claude”</b> (MÓDULOS) guarda o que passa pela tela, e a
+          importação abaixo traz o histórico antigo do <b>“Exportar conversa”</b> do celular
+          (<code>.txt</code>, ou o <code>.zip</code> do iPhone). Quando o Claude lê uma conversa, o texto dela
+          vai para a Anthropic.
+        </div>
+        <div class="hint" id="mcpStatus">verificando…</div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">
+          <button class="primary" id="mcpConfigurar">Configurar no Claude Desktop</button>
+          <input type="text" id="mcpNomeImport" placeholder="nome da conversa (opcional)" style="flex:1;min-width:180px" />
+          <button class="primary" id="mcpImportar"
+            style="background:transparent;color:var(--accent);border:1px solid var(--accent)">Importar conversa exportada…</button>
+          <button class="primary" id="mcpApagar"
+            style="background:transparent;color:var(--muted);border:1px solid var(--line-2)">Apagar arquivo local</button>
+        </div>
+        <div class="hint" id="mcpOut" style="white-space:pre-wrap"></div>
+      </div>
       <div class="field">
         <label class="k">Tom das respostas sugeridas</label>
         <input type="text" id="aiTone" placeholder="direto, amigável e claro" />
@@ -727,6 +758,7 @@
   </section>
 </div>
 
+<script src="settings-state.js"></script>
 <script>
   const invoke = (c,a)=> (window.__TAURI__ && window.__TAURI__.core.invoke(c,a)) || Promise.reject("sem Tauri");
 
@@ -972,6 +1004,7 @@
     {id:"smartNotify", n:31, t:"Notificações por contato", d:"Janela, som e persistência diferentes por contato ou grupo.", tag:"warn"},
     {id:"contextMenu",  n:32, t:"Menu do botão direito", d:"Transcrever, OCR, traduzir, salvar, ver mensagem apagada e checar golpe direto na mensagem.", tag:"warn"},
     {id:"nsfwBlur",    n:33, t:"Modo NSFW (borrar mídia)", d:"Fotos e vídeos das conversas entram borrados. Passe o mouse para espiar, clique para liberar aquele item.", tag:""},
+    {id:"localArchive", n:35, t:"Arquivo local para o Claude", d:"Guarda <b>nesta máquina</b> as mensagens das conversas que você abrir, na hora em que aparecem na tela, para o <b>Claude Desktop</b> consultar quando você pedir (\u201cresuma o grupo X desta semana\u201d). <b>Passivo</b>: não rola, não abre conversa e não carrega histórico sozinho \u2014 só guarda o que já passou pela tela. O histórico antigo entra pela importação do \u201cExportar conversa\u201d do celular, em IA & TRANSCRIÇÃO. O Claude <b>só lê</b>: não existe ferramenta de envio. Nasce desligado porque as mensagens dos seus contatos vão para o disco e, quando o Claude as lê, para a Anthropic.", tag:"local"},
     {id:"autoTranscribe", n:34, t:"Transcrever áudio automaticamente", d:"Áudios que chegarem com a conversa aberta são transcritos sozinhos, um de cada vez. Custa CPU e alguns segundos por áudio, e obter o som marca a mensagem como ouvida — por isso vem desligado.", tag:"local"},
   ];
 
@@ -1012,6 +1045,8 @@
     // `injection/src/main.js`. E o UNICO modulo do app que envia mensagem
     // sozinho, e o unico que nasce desligado por causa disso.
     "scheduleSend",
+    // 35 - `modulos/arquivo-local.js` + `arquivo.rs`/`mcp.rs`. Nasce desligado.
+    "localArchive",
   ]);
 
   /* Terceiro balde, e ele existe porque os outros dois mentiriam sobre estes
@@ -1029,7 +1064,26 @@
   const FORA_DA_GRADE = new Set(["multiAccount", "noReadReceipt"]);
 
   const PALETTE = ["#22d3aa","#7c3aed","#0ea5e9","#f43f5e","#f59e0b","#10b981","#e879f9","#f8fafc"];
-  let S = {};
+  let S = {}, SBase = {};
+  let salvandoPainel = Promise.resolve();
+  async function carregarPainel() {
+    const atual = await invoke("load_settings");
+    const mesclado = ZLMergeEdits(SBase, S, atual || {});
+    SBase = structuredClone(atual || {});
+    return mesclado;
+  }
+  function salvarPainel() {
+    const run = async () => {
+      const enviado = structuredClone(S);
+      const salvo = await invoke("save_settings", {settings: enviado, baseline: SBase});
+      S = ZLSyncInPlace(S, ZLMergeEdits(enviado, S, salvo));
+      SBase = structuredClone(salvo);
+      return salvo;
+    };
+    const proxima = salvandoPainel.then(run, run);
+    salvandoPainel = proxima.catch(() => {});
+    return proxima;
+  }
 
   function tag(t){
     if(t==="ia") return '<span class="badge ia">IA</span>';
@@ -1529,7 +1583,7 @@
     if(!P.listaModelos) return;
     if(!silencioso) hint.textContent = "buscando a lista de modelos no provedor…";
     try{
-      if(salvar){ await invoke("save_settings",{settings:S}); aiPendente=false; }
+      if(salvar){ await salvarPainel(); aiPendente=false; }
       const ids = await invoke("ai_models");
       if(!ids || !ids.length) throw "lista vazia";
       encherModelos(ids);
@@ -1982,7 +2036,7 @@
     const P = PROVIDERS[provAtual()];
     S[P.keyField] = "";
     document.getElementById("aiKey").value = "";
-    try{ await invoke("save_settings",{settings:S}); aiPendente=false; }catch(_){ }
+    try{ await salvarPainel(); aiPendente=false; }catch(_){ }
     document.getElementById("aiTestOut").textContent = "chave de "+P.label+" apagada.";
     refreshAiStatus();
   };
@@ -1991,7 +2045,7 @@
     const out=document.getElementById("aiTestOut"), btn=document.getElementById("aiTestBtn");
     btn.disabled=true; out.textContent="salvando e testando…";
     try{
-      await invoke("save_settings",{settings:S}); aiPendente=false;   // testa o que está salvo
+      await salvarPainel(); aiPendente=false;   // testa o que está salvo
       out.textContent = "✔ "+await invoke("ai_test");
     }catch(e){
       out.textContent = "✕ "+e;                        // erro EXATO do provedor
@@ -2003,9 +2057,9 @@
     btn.disabled=true;
     out.textContent="abrindo o navegador… autorize o ZapLite no OpenRouter e volte aqui (até 3 min).";
     try{
-      await invoke("save_settings",{settings:S}); aiPendente=false;   // não perde o que está em edição
+      await salvarPainel(); aiPendente=false;   // não perde o que está em edição
       const r = await invoke("ai_oauth_openrouter");
-      S = (await invoke("load_settings"))||S;
+      S = ZLSyncInPlace(S, await carregarPainel());
       out.textContent = "✔ conectado ao OpenRouter · chave "+r.keyTail+" · modelo "+r.model;
       renderIA();
     }catch(e){
@@ -2143,7 +2197,7 @@
       saida.textContent = "\u2714 "+msg;
       // O comando gravou o settings.json do lado Rust: recarrega, senao o
       // proximo "Salvar e aplicar" gravaria o objeto velho por cima.
-      try{ S = (await invoke("load_settings"))||S; }catch(_){ }
+      try{ S = ZLSyncInPlace(S, await carregarPainel()); }catch(_){ }
       document.getElementById("whisperModel").value = S.whisperModel||"";
       document.getElementById("whisperCli").value = S.whisperCli||"";
     }catch(err){
@@ -2179,17 +2233,105 @@
     invoke("whisper_cancel").finally(()=>{ setTimeout(()=>{ c.disabled=false; }, 1500); });
   };
 
+  /* Central de tarefas: a fila do Rust (`jobs.rs`). Só tipo, estado e hora —
+     o histórico público não carrega conteúdo. Atualiza enquanto o Painel está
+     visível; com ele escondido não há quem olhe. */
+  const TAREFA_TIPO = {ia:"IA", audio:"Transcrição"};
+  const TAREFA_ATIVA = new Set(["na fila","executando"]);
+  async function renderTarefas(){
+    const box = document.getElementById("tarefasLista");
+    let lista = [];
+    try{ lista = (await invoke("jobs_list")) || []; }
+    catch(e){ box.textContent = "não consegui ler a fila: "+((e&&e.message)||e); return; }
+    box.innerHTML = "";
+    if(!lista.length){
+      const p = document.createElement("div"); p.className = "hint"; p.style.marginTop = "0";
+      p.textContent = "Nenhuma tarefa recente.";
+      box.appendChild(p); return;
+    }
+    lista.forEach(function(t){
+      const linha = document.createElement("div");
+      linha.style.cssText = "display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line-2)";
+      const txt = document.createElement("span"); txt.style.flex = "1";
+      const hora = new Date(t.createdMs).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+      txt.textContent = hora+" · "+(TAREFA_TIPO[t.kind]||t.kind)+" · "+t.status;
+      linha.appendChild(txt);
+      if(TAREFA_ATIVA.has(t.status)){
+        const b = document.createElement("button");
+        b.className = "primary"; b.textContent = "Cancelar";
+        b.style.cssText = "background:transparent;color:#fbbf24;border:1px solid #fbbf24;padding:4px 10px";
+        b.onclick = async function(){ b.disabled = true; try{ await invoke("jobs_cancel",{id:t.id}); }catch(_){ } renderTarefas(); };
+        linha.appendChild(b);
+      }
+      box.appendChild(linha);
+    });
+  }
+  document.getElementById("tarefasLimpar").onclick = async function(){
+    try{ await invoke("jobs_clear"); }catch(_){ }
+    renderTarefas();
+  };
+  setInterval(function(){ if(document.visibilityState === "visible") renderTarefas(); }, 1500);
+
+  /* Claude Desktop (MCP): estado do arquivo local, importação do celular,
+     registro no claude_desktop_config.json e apagar tudo. */
+  function fmtBytes(n){ return n < 1024*1024 ? Math.max(1, Math.round(n/1024))+" KB" : (n/1024/1024).toFixed(1)+" MB"; }
+  async function renderMcp(){
+    const st = document.getElementById("mcpStatus");
+    try{
+      const s = await invoke("arquivo_status");
+      const ligado = !!(S.modules && S.modules.localArchive);
+      st.textContent = s.conversas+" conversa(s), "+s.mensagens+" mensagem(ns)"+(s.bytes ? " · "+fmtBytes(s.bytes) : "")+
+        " · captura pela tela: "+(ligado ? "LIGADA" : "desligada (módulo 35, em MÓDULOS)");
+    }catch(e){ st.textContent = "não consegui ler o arquivo local: "+((e&&e.message)||e); }
+  }
+  document.getElementById("mcpConfigurar").onclick = async function(){
+    const out = document.getElementById("mcpOut");
+    try{
+      const r = await invoke("arquivo_configurar_claude");
+      out.textContent = "✔ servidor “"+r.servidor+"” registrado em "+r.arquivo+
+        "\nFeche o Claude Desktop por completo (inclusive na bandeja) e abra de novo. Depois, peça por exemplo: "+
+        "“liste minhas conversas do WhatsApp”.";
+    }catch(e){ out.textContent = "✕ "+((e&&e.message)||e); }
+  };
+  document.getElementById("mcpImportar").onclick = async function(){
+    const out = document.getElementById("mcpOut"), btn = this;
+    btn.disabled = true; out.textContent = "escolha o arquivo exportado…";
+    try{
+      const nome = document.getElementById("mcpNomeImport").value;
+      const r = await invoke("arquivo_importar", {nome: nome || null});
+      out.textContent = r.cancelado ? "" :
+        "✔ “"+r.conversa+"”: "+r.lidas+" mensagem(ns) lidas, "+r.novas+" nova(s) no arquivo local"+
+        (r.lidas > r.novas ? " (as outras já estavam lá)" : "")+".";
+      document.getElementById("mcpNomeImport").value = "";
+    }catch(e){ out.textContent = "✕ "+((e&&e.message)||e); }
+    finally{ btn.disabled = false; renderMcp(); }
+  };
+  let mcpApagarArmado = null;
+  document.getElementById("mcpApagar").onclick = async function(){
+    const btn = this, out = document.getElementById("mcpOut");
+    // Dois cliques: apagar é irreversível e não há diálogo nativo aqui.
+    if(!mcpApagarArmado){
+      btn.textContent = "Clique de novo para apagar TUDO";
+      mcpApagarArmado = setTimeout(function(){ mcpApagarArmado = null; btn.textContent = "Apagar arquivo local"; }, 4000);
+      return;
+    }
+    clearTimeout(mcpApagarArmado); mcpApagarArmado = null; btn.textContent = "Apagar arquivo local";
+    try{ await invoke("arquivo_apagar"); out.textContent = "✔ arquivo local apagado."; }
+    catch(e){ out.textContent = "✕ "+((e&&e.message)||e); }
+    renderMcp();
+  };
+
   document.getElementById("saveBtn").onclick=async()=>{
     const st=document.getElementById("status");
     st.textContent="salvando…";
-    try{ await invoke("save_settings",{settings:S}); aiPendente=false; st.textContent="✔ aplicado à janela do WhatsApp"; }
+    try{ await salvarPainel(); aiPendente=false; st.textContent="✔ aplicado à janela do WhatsApp"; }
     catch(e){ st.textContent="erro ao salvar"; }
-    refreshAiStatus();
+    refreshAiStatus(); renderMcp();
     setTimeout(()=>st.textContent="",2500);
   };
 
   (async function(){
-    try{ S = (await invoke("load_settings"))||{}; }catch(_){ S={}; }
+    try{ S = await carregarPainel(); }catch(_){ S={}; }
     // mesclar: o salvo vence, módulos novos usam o padrão de fábrica
     // Tem que ser a MESMA lista de `MODULOS_PADRAO` em injection/src/nucleo.js.
     // Enquanto as duas divergiam, um modulo que nasce ligado no bundle
@@ -2204,11 +2346,11 @@
       pinExtra:true,advSearch:true,stickerMaker:true,imgToSticker:true,
       globalHotkey:false,
       // 02 — o unico que envia mensagem sozinho: nasce desligado nos dois lados.
-      scheduleSend:false}, S.modules||{});
+      scheduleSend:false, localArchive:false}, S.modules||{});
     renderMods(); renderQR(); renderHK(); renderRules(); renderCustom(); renderIA();
     renderContas();
     wRefresh();
-    renderMention(); carregarChats();
+    renderMention(); carregarChats(); renderTarefas(); renderMcp();
     document.getElementById("status").textContent="pronto";
     setTimeout(()=>document.getElementById("status").textContent="",1500);
   })();

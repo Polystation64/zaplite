@@ -1,3 +1,4 @@
+import { observarTela } from "../tela.js";
 import { bolhasVisiveis } from "../bolhas.js";
 import { reg, settings, throttleComCauda } from "../nucleo.js";
 
@@ -56,25 +57,26 @@ export function registrarNsfwBlur() {
       const pedir = throttleComCauda(varrer, NSFW_VARREDURA_MS);
       self._pedir = pedir;
 
-      self._obs = new MutationObserver(pedir);
-      self._obs.observe(document.body, { childList: true, subtree: true });
-      // Rede de segurança para o que muda sem inserir nó (troca de `src`).
-      self._timer = setInterval(varrer, 1500);
+      // `background`: roda também com a janela oculta. Mídia que chega com o
+      // app minimizado tem que estar borrada ANTES de a janela voltar — sem
+      // isto ela aparecia nua pelo tempo do debounce + piso da varredura.
+      // A troca de `src` sem nó novo é coberta pelo `attributeFilter` e pela
+      // verificação lenta do observador compartilhado.
+      // `0`: o próprio `throttleComCauda` (400 ms) já limita; mídia nova não espera.
+      self._parar = observarTela(pedir, true, 0);
 
       self._clique = (e) => {
         const alvo = e.target && e.target.closest && e.target.closest(".zl-nsfw-alvo");
         if (alvo) alvo.classList.add("zl-nsfw-livre"); // sem preventDefault
       };
       document.addEventListener("click", self._clique, true);
-
-      varrer();
+      // A primeira varredura já aconteceu: `observarTela` roda o assinante na
+      // inscrição, e o `throttleComCauda` executa na borda de entrada.
     },
     revert() {
-      if (this._obs) this._obs.disconnect();
-      this._obs = null;
+      if (this._parar) this._parar();
+      this._parar = null;
       if (this._pedir && this._pedir.cancelar) this._pedir.cancelar();
-      clearInterval(this._timer);
-      this._timer = null;
       if (this._clique) document.removeEventListener("click", this._clique, true);
       document.querySelectorAll(".zl-nsfw-alvo").forEach((e) => {
         e.classList.remove("zl-nsfw-alvo");

@@ -11,15 +11,38 @@ export async function ai(system, prompt, extra) {
     mediaType: (extra && extra.mediaType) || null,
   });
 }
-export function collectVisibleMessages(limit = 200) {
-  const rows = bolhasVisiveis().slice(-limit);
-  return rows
+/* Orçamento em BYTES UTF-8 — é o que o `ai_complete` mede (teto de 64 KB no
+   prompt inteiro). 200 mensagens de ~350 bytes (acento ocupa 2) já passavam
+   do teto, e o resumo de uma conversa longa falhava com "selecione menos
+   mensagens" num módulo que não tem como selecionar. Folga para o texto de
+   instrução que cada chamador acrescenta. */
+export const ORCAMENTO_MENSAGENS_BYTES = 56 * 1024;
+
+/** As mensagens visíveis MAIS RECENTES que cabem em `maxBytes`. Devolve o
+ * texto e quantas ficaram de fora, para quem chama poder dizer isso. */
+export function coletarMensagens(limit = 200, maxBytes = ORCAMENTO_MENSAGENS_BYTES) {
+  const linhas = bolhasVisiveis()
+    .slice(-limit)
     .map((r) => {
       const t = textoDaBolha(r);
       return t ? `${ehDeSaida(r) ? "Você" : "Contato"}: ${t}` : null;
     })
-    .filter(Boolean)
-    .join("\n");
+    .filter(Boolean);
+  const enc = new TextEncoder();
+  const dentro = [];
+  let bytes = 0;
+  for (let i = linhas.length - 1; i >= 0; i--) {
+    const n = enc.encode(linhas[i]).length + 1; // + a quebra de linha
+    if (bytes + n > maxBytes) break;
+    bytes += n;
+    dentro.push(linhas[i]);
+  }
+  dentro.reverse();
+  return { texto: dentro.join("\n"), incluidas: dentro.length, deFora: linhas.length - dentro.length };
+}
+
+export function collectVisibleMessages(limit = 200) {
+  return coletarMensagens(limit).texto;
 }
 
 /* --- preferências dos módulos de IA sob demanda -----------------------

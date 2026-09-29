@@ -172,6 +172,147 @@ teste("texto da bolha prefere o span e não gruda o horário", () => {
   assert.strictEqual(textoDaBolha(null), "");
 });
 
+/* "Copiar texto" copiava a mensagem inteira com um trecho selecionado. A
+   seleção só vale se estiver INTEIRA dentro da bolha clicada. */
+const selecaoNaBolha = new Function(extrair("selecaoNaBolha") + "; return selecaoNaBolha;")();
+teste("seleção dentro da bolha é copiada; fora dela, não", () => {
+  const dentro = { id: "dentro" };
+  const fora = { id: "fora" };
+  const bolha = { contains: (n) => n === dentro };
+  const sel = (texto, no, colapsada) => ({
+    isCollapsed: !!colapsada,
+    rangeCount: 1,
+    getRangeAt: () => ({ commonAncestorContainer: no }),
+    toString: () => texto,
+  });
+  assert.strictEqual(selecaoNaBolha(bolha, sel(" bom ", dentro)), "bom");
+  assert.strictEqual(selecaoNaBolha(bolha, sel("bom dia e outra", fora)), "");
+  assert.strictEqual(selecaoNaBolha(bolha, sel("", dentro, true)), "");
+  assert.strictEqual(selecaoNaBolha(bolha, null), "");
+  assert.strictEqual(selecaoNaBolha(null, sel("bom", dentro)), "");
+});
+
+/* Segunda fonte da conversa aberta: o jid dentro do data-id da mensagem. */
+const jidDoIdDeMensagem = new Function(
+  constante("JID_NO_ID_RE") + extrair("jidDoIdDeMensagem") + "; return jidDoIdDeMensagem;"
+)();
+teste("jid da conversa sai do data-id da mensagem", () => {
+  assert.strictEqual(jidDoIdDeMensagem("false_5511999998888@c.us_3EB0ABCDEF"), "5511999998888@c.us");
+  assert.strictEqual(jidDoIdDeMensagem("true_120363000000@g.us_3EB0AB_5511999998888@c.us"), "120363000000@g.us");
+  assert.strictEqual(jidDoIdDeMensagem("false_5511999-1600000000@g.us_ABC"), "5511999-1600000000@g.us");
+  assert.strictEqual(jidDoIdDeMensagem("123456789@lid"), ""); // sem prefixo: não adivinha
+  assert.strictEqual(jidDoIdDeMensagem("3EB0ABCDEF"), "");
+  assert.strictEqual(jidDoIdDeMensagem(""), "");
+  assert.strictEqual(jidDoIdDeMensagem(null), "");
+});
+
+/* Painel: editar DEPOIS de salvar não pode cair num objeto morto. Os handlers
+   guardam `arr`/`r`; salvar tem que manter a identidade deles. */
+teste("painel: edição feita depois de salvar chega ao próximo save", () => {
+  const { mergeEdits, syncInPlace } = require(path.join(__dirname, "..", "..", "src", "settings-state.js"));
+  let S = { quickReplies: [{ atalho: "/a", texto: "um" }], notify: { rules: [{ enabled: true }] } };
+  const base = structuredClone(S);
+  const arr = S.quickReplies; // o que o handler do renderQR guardou
+  const regra = S.notify.rules[0]; // o que o ruleCard guardou
+  // o Rust devolve o salvo, com um ramo que a página gravou no meio
+  const salvo = { ...structuredClone(S), reminders: [{ id: 1 }] };
+  S = syncInPlace(S, mergeEdits(base, S, salvo));
+  arr[0].texto = "dois";
+  regra.enabled = false;
+  assert.strictEqual(S.quickReplies[0].texto, "dois");
+  assert.strictEqual(S.notify.rules[0].enabled, false);
+  assert.deepStrictEqual(S.reminders, [{ id: 1 }]);
+  // chave que sumiu do salvo sai; array que encolheu encolhe
+  syncInPlace(S, { quickReplies: [] });
+  assert.deepStrictEqual(S, { quickReplies: [] });
+  assert.strictEqual(S.quickReplies, arr);
+});
+
+/* Digitar não pode acordar os assinantes do observador compartilhado; uma
+   mensagem nova (fora do campo) tem que acordar. */
+const relevante = new Function(
+  constante("MARCADORES_EM_NO_ALHEIO") +
+    extrair("nosso") + extrair("editavel") + extrair("relevante") + "; return relevante;"
+)();
+teste("observador da tela ignora digitação e o que é nosso", () => {
+  const nossoRaiz = { tagName: "DIV", id: "zl-panel", classList: [], parentElement: null };
+  const el = (editavel, nosso) => ({
+    nodeType: 1,
+    isContentEditable: editavel,
+    closest: () => (nosso ? nossoRaiz : null),
+  });
+  const texto = (pai) => ({ nodeType: 3, parentElement: pai });
+  const campo = el(true, false);
+  const conversa = el(false, false);
+  const zl = el(false, true);
+  // tecla no campo: texto muda e spans entram
+  assert.strictEqual(relevante({ type: "characterData", target: texto(campo) }), false);
+  assert.strictEqual(
+    relevante({ type: "childList", target: campo, addedNodes: [el(true, false)], removedNodes: [] }),
+    false
+  );
+  // bolha nova na conversa
+  assert.strictEqual(
+    relevante({ type: "childList", target: conversa, addedNodes: [el(false, false)], removedNodes: [] }),
+    true
+  );
+  // só nós mesmos pendurando coisa
+  assert.strictEqual(
+    relevante({ type: "childList", target: conversa, addedNodes: [zl], removedNodes: [] }),
+    false
+  );
+  assert.strictEqual(relevante({ type: "attributes", target: conversa }), true);
+
+  // blur de privacidade: <body class="zl-blur"> NÃO torna a página "nossa"
+  const body = { tagName: "BODY", id: "", classList: ["zl-blur"], parentElement: null };
+  const sobBody = { nodeType: 1, isContentEditable: false, closest: () => body };
+  assert.strictEqual(
+    relevante({ type: "childList", target: sobBody, addedNodes: [sobBody], removedNodes: [] }),
+    true
+  );
+  // linha do WhatsApp marcada pela busca avançada continua sendo do WhatsApp
+  const linha = { tagName: "DIV", id: "", classList: ["zl-bsc-alvo"], parentElement: null };
+  assert.strictEqual(
+    relevante({ type: "characterData", target: texto({ nodeType: 1, isContentEditable: false, closest: () => linha }) }),
+    true
+  );
+});
+
+/* Intervalo mínimo por assinante: mudanças em rajada viram UMA rodada agora e
+   UMA na borda de saída — nunca uma por mutação, nunca nenhuma. */
+teste("observador da tela respeita o intervalo mínimo de cada assinante", async () => {
+  const fabrica = new Function(
+    "leitores",
+    "document",
+    extrair("agendar") + "async " + extrair("rodar") + "; return { agendar, rodar };"
+  );
+  const leitores = new Set();
+  const { agendar, rodar } = fabrica(leitores, { hidden: false });
+  let rodadas = 0;
+  const item = { fn: () => { rodadas++; }, background: false, minMs: 80, ultimo: 0, espera: null, running: false, again: false };
+  leitores.add(item);
+  await rodar(item); // inscrição
+  assert.strictEqual(rodadas, 1);
+  for (let i = 0; i < 10; i++) agendar(item); // rajada dentro da janela
+  assert.strictEqual(rodadas, 1, "rajada não pode rodar na hora");
+  await espera(140);
+  assert.strictEqual(rodadas, 2, "a borda de saída roda exatamente uma vez");
+  leitores.delete(item);
+  agendar(item);
+  await espera(120);
+  assert.strictEqual(rodadas, 2, "desinscrito não roda");
+});
+
+/* Toda classe `zl-` pendurada com classList.add/toggle é em nó ALHEIO e tem
+   que estar em MARCADORES_EM_NO_ALHEIO — senão o observador compartilhado
+   passa a ignorar o conteúdo daquele nó. */
+teste("toda classe zl- aplicada em nó alheio está nos marcadores", () => {
+  const marcadores = new Function(constante("MARCADORES_EM_NO_ALHEIO") + "; return MARCADORES_EM_NO_ALHEIO;")();
+  const achadas = [...SRC.matchAll(/classList\.(?:add|toggle)\(\s*["'](zl-[\w-]+)["']/g)].map((m) => m[1]);
+  assert.ok(achadas.length > 0);
+  for (const c of achadas) assert.ok(marcadores.has(c), c + " falta em MARCADORES_EM_NO_ALHEIO");
+});
+
 /* V2 — O CASO DO PRINT.
    Duas conversas com não lidas de "quarta-feira" viraram toast no momento em
    que o app subiu. A decisão era "tem badge e a prévia mudou desde a última

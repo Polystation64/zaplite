@@ -1,3 +1,4 @@
+import { observarTela } from "../tela.js";
 import {
   autorDaLinha,
   chatIdDaLinha,
@@ -391,7 +392,8 @@ export function registrarNotificacoes() {
         // oferecer caixinhas de "silenciar" em vez de obrigar o usuário a
         // escrever uma regra por grupo. É insumo de UI: nenhuma decisão de
         // notificação depende disto (a decisão usa o `chat_id` do toast).
-        // A varredura roda a cada 1,2s; reportar a lista a cada 15s basta.
+        // A varredura roda a cada mudança da tela (observador compartilhado,
+        // com checagem de reserva a cada 6s); reportar a lista a cada 15s basta.
         if (Date.now() - (self._ultimoReport || 0) > 15000) {
           self._ultimoReport = Date.now();
           const chats = [];
@@ -414,8 +416,8 @@ export function registrarNotificacoes() {
         }
       }
 
-      this._timer = setInterval(scan, 1200);
-      scan();
+      // 1,2 s: o mesmo ritmo do intervalo que o observador substituiu.
+      this._pararScan = observarTela(scan, true, 1200);
 
       // 5) Clique no toast abre a conversa correspondente.
       // Resolve pelo ID da conversa. Se o id não estiver na lista (conversa
@@ -587,8 +589,8 @@ export function registrarNotificacoes() {
     },
 
     revert() {
-      clearInterval(this._timer);
-      this._timer = null;
+      if (this._pararScan) this._pararScan();
+      this._pararScan = null;
       // Y2: a repetição da abertura não pode sobreviver ao desligamento do
       // módulo — senão um clique velho abre conversa depois de o usuário
       // desligar as notificações.

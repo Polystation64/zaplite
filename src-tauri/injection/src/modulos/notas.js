@@ -1,3 +1,4 @@
+import { observarTela } from "../tela.js";
 import { chatIdAberto, chatIdDaLinha, linhasDaLista, nomeDaConversaAberta } from "../lista.js";
 import { addAct, dropAct, ensureDock } from "../dock.js";
 import { reg } from "../nucleo.js";
@@ -181,12 +182,12 @@ export function registrarNotas() {
       // sem observar a árvore inteira. A relação de ids só é relida quando o
       // usuário salva — o que muda de segundo em segundo é qual conversa está
       // aberta, não o caderno.
-      timer = setInterval(pintar, 1500);
+      timer = observarTela(pintar);
     },
     revert() {
       dropAct(ID_ACT);
       if (timer) {
-        clearInterval(timer);
+        timer();
         timer = null;
       }
       limparMarcas();

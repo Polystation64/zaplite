@@ -156,6 +156,7 @@ function carregar() {
 async function gravar() {
   try {
     await invoke("save_module_data", { chave: "scheduled", valor: fila });
+    settings.scheduled = fila;
   } catch (e) {
     showPanel(
       "O agendamento NÃO foi guardado",

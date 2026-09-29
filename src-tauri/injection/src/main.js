@@ -48,6 +48,7 @@ import { registrarRespostasRapidas } from "./modulos/respostas-rapidas.js";
 import { registrarLembretes } from "./modulos/lembretes.js";
 import { registrarAcoesEmMassa } from "./modulos/acoes-massa.js";
 import { registrarExportar } from "./modulos/exportar.js";
+import { registrarArquivoLocal } from "./modulos/arquivo-local.js";
 import { registrarBaixarMassa } from "./modulos/baixar-massa.js";
 import { registrarPinExtra } from "./modulos/pin-extra.js";
 import { registrarBuscaAvancada } from "./modulos/busca-avancada.js";
@@ -146,6 +147,12 @@ registrarFigurinhaImagem();
       aceitável para um módulo cujo pior erro é mandar a mensagem errada para
       a pessoa errada. Quem liga é o usuário, no Painel, lendo o que ele faz. */
 registrarAgendar();
+
+/* 2f. `localArchive` — guarda o que já está NA TELA para o Claude Desktop
+      consultar (`zaplite.exe --mcp`). Nasce DESLIGADO: ligado, cada mensagem
+      que o WhatsApp desenhar vai para um arquivo em disco, e é o usuário quem
+      decide se quer isso. Passivo: não rola, não abre, não envia. */
+registrarArquivoLocal();
 
 /* 4. O Rust chama isto ao salvar settings. */
 window.__ZAPLITE_RELOAD__ = applyAll;

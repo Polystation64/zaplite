@@ -35,7 +35,7 @@ base64 = "0.22"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 # Extração do pacote do whisper.cpp (só deflate: o resto do zip não é usado).
 zip = { version = "2", default-features = false, features = ["deflate"] }
-tokio = { version = "1", features = ["process", "fs", "time", "rt"] }
+tokio = { version = "1", features = ["process", "fs", "time", "rt", "sync", "macros", "io-util"] }
 # OAuth PKCE do OpenRouter: verificador aleatório + desafio SHA-256.
 rand = "0.9"
 sha2 = "0.10"
@@ -45,6 +45,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 # HKCU — não pede elevação e não afeta outro usuário da máquina.
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
+windows-sys = { version = "0.61.2", features = ["Win32_Security_Cryptography", "Win32_Foundation", "Win32_Storage_FileSystem"] }
 
 [profile.release]
 opt-level = "s"

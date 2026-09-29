@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-arquivo-apagar"
+description = "Enables the arquivo_apagar command without any pre-configured scope."
+commands.allow = ["arquivo_apagar"]
+
+[[permission]]
+identifier = "deny-arquivo-apagar"
+description = "Denies the arquivo_apagar command without any pre-configured scope."
+commands.deny = ["arquivo_apagar"]

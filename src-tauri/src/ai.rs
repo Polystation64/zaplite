@@ -14,6 +14,7 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
+use std::sync::OnceLock;
 use tauri::AppHandle;
 
 // ---------------------------------------------------------------------------
@@ -542,6 +543,13 @@ pub struct Resposta {
     pub modelo: String,
 }
 
+fn http_client() -> Result<&'static reqwest::Client, String> {
+    static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
+    CLIENT.get_or_init(|| reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(15)).timeout(Duration::from_secs(120))
+        .build().map_err(|e| e.to_string())).as_ref().map_err(Clone::clone)
+}
+
 pub async fn executar(
     cfg: &Config,
     system: &str,
@@ -563,12 +571,10 @@ pub async fn executar_detalhado(
 ) -> Result<Resposta, String> {
     let req = build_request(cfg, system, prompt, image_b64, media_type);
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(120))
-        .build()
-        .map_err(|e| format!("Falha ao criar cliente HTTP: {e}"))?;
+    let client = http_client()?;
 
     let mut rb = client.post(&req.url);
+    rb = rb.timeout(Duration::from_secs(120));
     for (k, v) in &req.headers {
         rb = rb.header(k.as_str(), v.as_str());
     }
@@ -624,12 +630,9 @@ pub async fn listar_modelos(cfg: &Config) -> Result<Vec<String>, String> {
         ));
     }
     let url = endpoint_models(cfg);
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .build()
-        .map_err(|e| format!("Falha ao criar cliente HTTP: {e}"))?;
+    let client = http_client()?;
 
-    let mut rb = client.get(&url);
+    let mut rb = client.get(&url).timeout(Duration::from_secs(20));
     if !cfg.key.is_empty() {
         rb = rb.header("authorization", format!("Bearer {}", cfg.key));
     }
@@ -892,18 +895,22 @@ pub async fn ai_complete(
     image_b64: Option<String>,
     media_type: Option<String>,
 ) -> Result<String, String> {
+    if system.len() > 16 * 1024 || prompt.len() > 64 * 1024 || image_b64.as_ref().map(|s| s.len() > 9 * 1024 * 1024).unwrap_or(false) {
+        return Err("Entrada muito grande: selecione menos mensagens ou uma imagem menor (limite de 9 MB).".into());
+    }
     let settings = crate::read_settings(&app);
     let cfg = resolve(&settings)?;
     if image_b64.is_some() {
         conferir_visao(&cfg)?;
     }
-    executar(
+    let key = crate::jobs::fingerprint(&[cfg.provider.id().as_bytes(), cfg.model.as_bytes(), cfg.vision_model.as_bytes(), cfg.base_url.as_bytes(), cfg.key.as_bytes(), system.as_bytes(), prompt.as_bytes(), image_b64.as_deref().unwrap_or("").as_bytes(), media_type.as_deref().unwrap_or("").as_bytes()]);
+    crate::jobs::run("ia", key, executar(
         &cfg,
         &system,
         &prompt,
         image_b64.as_deref(),
         media_type.as_deref(),
-    )
+    ))
     .await
 }
 
@@ -1047,10 +1054,7 @@ pub async fn ai_oauth_openrouter(app: AppHandle) -> Result<Value, String> {
     let code = esperar_retorno(listener).await?; // aqui o servidor já caiu
     let chave = trocar_code_por_chave(&code, &verificador).await?;
 
-    let mut settings = crate::read_settings(&app);
-    if !settings.is_object() {
-        settings = json!({});
-    }
+    let settings = crate::atualizar_settings(&app, true, |settings| {
     settings["openrouterKey"] = json!(chave);
     settings["aiProvider"] = json!("openrouter");
     let modelo_atual = settings["aiModel"].as_str().unwrap_or("").trim().to_string();
@@ -1058,7 +1062,8 @@ pub async fn ai_oauth_openrouter(app: AppHandle) -> Result<Value, String> {
     if modelo_atual.is_empty() || !modelo_atual.contains('/') {
         settings["aiModel"] = json!(Provider::OpenRouter.default_model());
     }
-    crate::write_settings(&app, settings.clone())?;
+    Ok(())
+    })?;
 
     Ok(json!({
         "provider": "openrouter",
