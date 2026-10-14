@@ -10,6 +10,7 @@ mod settings_store;
 mod jobs;
 mod arquivo;
 mod mcp;
+mod chatgpt;
 
 /// Windows: impede que o processo filho (ffmpeg/whisper-cli) abra uma
 /// janela de console piscando na frente do usuário. 0x0800_0000.
@@ -1558,6 +1559,36 @@ fn origem_para_log(url: &str) -> String {
 }
 
 #[cfg(test)]
+mod testes_som {
+    use super::som_de_teste_valido;
+    #[test]
+    fn so_sons_da_lista_chegam_ao_eval() {
+        assert_eq!(som_de_teste_valido("ohoh"), Some("ohoh"));
+        assert_eq!(som_de_teste_valido("tecla'); alert(1); ('"), None);
+        assert_eq!(som_de_teste_valido(""), None);
+    }
+
+    #[test]
+    fn so_audio_pequeno_vira_som() {
+        use super::{audio_aceito, conferir_arquivo_de_som, MAX_SOM_BYTES};
+        use std::path::Path;
+        assert_eq!(audio_aceito(Path::new("uhoh.WAV")), Some("audio/wav"));
+        assert_eq!(audio_aceito(Path::new("x.mp3")), Some("audio/mpeg"));
+        assert_eq!(audio_aceito(Path::new("x.exe")), None);
+        assert_eq!(audio_aceito(Path::new("sem-extensao")), None);
+        let dir = std::env::temp_dir();
+        let grande = dir.join(format!("zl-som-{:x}.wav", rand::random::<u64>()));
+        std::fs::write(&grande, vec![0u8; (MAX_SOM_BYTES + 1) as usize]).unwrap();
+        assert!(conferir_arquivo_de_som(&grande).is_err());
+        let pequeno = dir.join(format!("zl-som-{:x}.wav", rand::random::<u64>()));
+        std::fs::write(&pequeno, b"RIFF").unwrap();
+        assert_eq!(conferir_arquivo_de_som(&pequeno).unwrap(), "audio/wav");
+        let _ = std::fs::remove_file(grande);
+        let _ = std::fs::remove_file(pequeno);
+    }
+}
+
+#[cfg(test)]
 mod testes_abrir_arquivo {
     use super::{extensao_abrivel, marcar_como_da_internet};
     use std::path::Path;
@@ -2116,6 +2147,116 @@ fn alternar_janela(app: &AppHandle) {
     }
 }
 
+/// "Ouvir" do Painel, modo ICQ. O som toca na janela do WhatsApp (é lá que
+/// o modo ICQ vive) e o nome passa por uma lista fixa — nunca vira código
+/// arbitrário dentro do `eval`.
+pub fn som_de_teste_valido(som: &str) -> Option<&'static str> {
+    match som {
+        "tecla" => Some("tecla"),
+        "borracha" => Some("borracha"),
+        "ohoh" => Some("ohoh"),
+        _ => None,
+    }
+}
+
+/* Sons do ICQ a partir de arquivos DO USUÁRIO. O ZapLite não traz nem
+   distribui som de terceiros: a pessoa escolhe os próprios arquivos no Painel.
+   O caminho mora em `icqSonsArquivos`, FORA de `CHAVES_PUBLICAS`; a página só
+   enxerga `theme.icq.personalizado.<som> = true` e pede o som PELO NOME. */
+const MAX_SOM_BYTES: u64 = 2 * 1024 * 1024;
+
+fn audio_aceito(p: &Path) -> Option<&'static str> {
+    match p.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "wav" => Some("audio/wav"),
+        "mp3" => Some("audio/mpeg"),
+        "ogg" | "oga" => Some("audio/ogg"),
+        "opus" => Some("audio/ogg"),
+        "m4a" | "aac" => Some("audio/mp4"),
+        "flac" => Some("audio/flac"),
+        _ => None,
+    }
+}
+
+fn conferir_arquivo_de_som(p: &Path) -> Result<&'static str, String> {
+    let mime = audio_aceito(p).ok_or("escolha um arquivo de áudio (.wav, .mp3, .ogg, .m4a, .flac).")?;
+    let tam = fs::metadata(p).map_err(|_| "o arquivo de som não está mais no disco.")?.len();
+    if tam > MAX_SOM_BYTES {
+        return Err("o arquivo de som passa de 2 MB; escolha um mais curto.".into());
+    }
+    Ok(mime)
+}
+
+#[tauri::command]
+async fn escolher_som_icq(app: AppHandle, som: String) -> Result<Value, String> {
+    let som = som_de_teste_valido(&som).ok_or("som desconhecido.")?;
+    let escolhido = app
+        .dialog()
+        .file()
+        .set_title("Escolha o arquivo de som")
+        .add_filter("Áudio", &["wav", "mp3", "ogg", "oga", "opus", "m4a", "aac", "flac"])
+        .blocking_pick_file()
+        .and_then(|f| f.into_path().ok());
+    let Some(p) = escolhido else {
+        return Ok(json!({ "cancelado": true }));
+    };
+    conferir_arquivo_de_som(&p)?;
+    let caminho = p.to_string_lossy().to_string();
+    atualizar_settings(&app, true, |s| {
+        if !s["icqSonsArquivos"].is_object() {
+            s["icqSonsArquivos"] = json!({});
+        }
+        s["icqSonsArquivos"][som] = json!(caminho);
+        if !s["theme"].is_object() { s["theme"] = json!({}); }
+        if !s["theme"]["icq"].is_object() { s["theme"]["icq"] = json!({}); }
+        if !s["theme"]["icq"]["personalizado"].is_object() { s["theme"]["icq"]["personalizado"] = json!({}); }
+        s["theme"]["icq"]["personalizado"][som] = json!(true);
+        Ok(())
+    })?;
+    Ok(json!({ "cancelado": false, "arquivo": p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default() }))
+}
+
+#[tauri::command]
+fn limpar_som_icq(app: AppHandle, som: String) -> Result<(), String> {
+    let som = som_de_teste_valido(&som).ok_or("som desconhecido.")?;
+    atualizar_settings(&app, true, |s| {
+        if let Some(m) = s["icqSonsArquivos"].as_object_mut() { m.remove(som); }
+        if let Some(m) = s["theme"]["icq"]["personalizado"].as_object_mut() { m.remove(som); }
+        Ok(())
+    })
+    .map(|_| ())
+}
+
+/// O "oh-oh" do usuário embutido no próprio toast (data URL): o toast.html
+/// toca com `new Audio(...)` e nunca recebe caminho de arquivo.
+pub(crate) fn som_icq_como_data_url(settings: &Value, som: &str) -> Option<String> {
+    let caminho = settings["icqSonsArquivos"][som].as_str().filter(|c| !c.is_empty())?;
+    let p = PathBuf::from(caminho);
+    let mime = conferir_arquivo_de_som(&p).ok()?;
+    let bytes = fs::read(&p).ok()?;
+    Some(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
+/// A página pede o som pelo NOME e recebe só o arquivo que o usuário escolheu
+/// para ele — nunca um caminho que a página tenha mandado.
+#[tauri::command]
+fn ler_som_icq(app: AppHandle, som: String) -> Result<Value, String> {
+    let som = som_de_teste_valido(&som).ok_or("som desconhecido.")?;
+    let s = read_settings(&app);
+    let caminho = s["icqSonsArquivos"][som].as_str().filter(|c| !c.is_empty()).ok_or("nenhum arquivo escolhido para este som.")?;
+    let p = PathBuf::from(caminho);
+    let mime = conferir_arquivo_de_som(&p)?;
+    let bytes = fs::read(&p).map_err(|e| e.to_string())?;
+    Ok(json!({ "mime": mime, "b64": base64::engine::general_purpose::STANDARD.encode(bytes) }))
+}
+
+#[tauri::command]
+fn tocar_som_teste(app: AppHandle, som: String) -> Result<(), String> {
+    let som = som_de_teste_valido(&som).ok_or("som desconhecido.")?;
+    let w = app.get_webview_window("main").ok_or("a janela do WhatsApp não está aberta.")?;
+    w.eval(&format!("window.__ZAPLITE_SOM__ && window.__ZAPLITE_SOM__('{som}')"))
+        .map_err(|e| e.to_string())
+}
+
 /* ==========================================================================
    ARQUIVO LOCAL PARA O CLAUDE (MCP) — ver `arquivo.rs` e `mcp.rs`.
    ========================================================================== */
@@ -2317,6 +2458,10 @@ pub fn run() {
             // Arquivo local para o Claude (MCP). `arquivo_registrar` é o único
             // que a página chama; os outros são do Painel.
             arquivo_registrar,
+            tocar_som_teste,
+            escolher_som_icq,
+            limpar_som_icq,
+            ler_som_icq,
             arquivo_status,
             arquivo_importar,
             arquivo_apagar,
@@ -2346,6 +2491,8 @@ pub fn run() {
             ai::ai_test,
             ai::ai_models,
             ai::ai_oauth_openrouter,
+            chatgpt::ai_oauth_chatgpt,
+            chatgpt::ai_chatgpt_sair,
             jobs::jobs_list,
             jobs::jobs_cancel,
             jobs::jobs_clear,

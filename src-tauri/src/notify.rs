@@ -150,6 +150,14 @@ pub struct Toast {
     /// N2: tamanho da janela em % do estilo escolhido (80..150).
     #[serde(default)]
     pub size_pct: u64,
+    /// Tema visual do ZapLite ("" = padrão | vidro | brutal | terminal | icq):
+    /// o toast acompanha o tema escolhido para o WhatsApp.
+    #[serde(default)]
+    pub tema: String,
+    /// "auto" | "claro" | "escuro". No automático o toast segue o claro/
+    /// escuro do Windows — é o que o "padrão do sistema" do WhatsApp segue.
+    #[serde(default)]
+    pub modo: String,
     /// N2: opacidade em repouso (0.35..1.0). O toast.html volta a 100% quando o
     /// mouse passa por cima — translúcido é para não atrapalhar, não para
     /// esconder a mensagem de quem foi ler.
@@ -632,6 +640,8 @@ pub fn montar_com(req: &ToastRequest, r: &Regra, mention: bool) -> Toast {
         position: canto_valido(&r.position).to_string(),
         size_pct: pct_valido(r.size_pct),
         opacity: opacidade_valida(r.opacity),
+        tema: String::new(),
+        modo: String::new(),
     }
 }
 
@@ -896,6 +906,37 @@ fn fechar(app: &AppHandle, id: &str) {
 }
 
 /// Chamado pelo bundle.js quando chega uma mensagem nova.
+const TEMAS_DE_TOAST: &[&str] = &["vidro", "brutal", "terminal", "icq"];
+
+/// Tema e som do toast segundo o tema do ZapLite. PURA e testada.
+///
+/// Som — UM só por mensagem (relato real: tocavam o do contato E o "oh-oh"):
+///   * regra ESPECÍFICA do contato (ou menção) → o som dela vence, inclusive
+///     "nenhum": silenciar o som de um contato é escolha, não ausência;
+///   * senão, no tema ICQ com o "oh-oh" ligado → o toast toca "oh-oh" (o
+///     arquivo do usuário, se ele escolheu um; senão o sintetizado) no lugar
+///     do som padrão. A página deixa de tocar o dela (ver modulos/tema.js).
+pub fn aplicar_tema(settings: &Value, toast: &mut Toast, especifica: bool, ohoh_arquivo: Option<String>) {
+    let tema_ligado = settings["modules"]["theme"].as_bool().unwrap_or(true);
+    let estilo = settings["theme"]["estilo"].as_str().unwrap_or("");
+    toast.tema = if tema_ligado && TEMAS_DE_TOAST.contains(&estilo) { estilo.to_string() } else { String::new() };
+    toast.modo = match settings["theme"]["modo"].as_str() {
+        Some("claro") => "claro",
+        Some("escuro") => "escuro",
+        _ => "auto",
+    }
+    .to_string();
+    let icq = &settings["theme"]["icq"];
+    let ohoh_ligado = icq["ohoh"].as_bool().unwrap_or(true);
+    if toast.tema == "icq" && ohoh_ligado && !especifica {
+        toast.sound = "ohoh".into();
+        toast.sound_file = ohoh_arquivo.unwrap_or_default();
+        if let Some(v) = icq["volume"].as_f64() {
+            toast.volume = v.clamp(0.0, 1.0);
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn show_toast(app: AppHandle, mut toast: ToastRequest) -> Result<(), String> {
     if toast.id.is_empty() {
@@ -916,6 +957,14 @@ pub async fn show_toast(app: AppHandle, mut toast: ToastRequest) -> Result<(), S
     };
     let mut resolvido = montar_com(&toast, &regra, mencao);
     resolvido.snooze_min = snooze_minutos(&settings);
+    // "Específica" = uma regra do Painel casou com ESTE contato, ou é menção.
+    let especifica = mencao || resolver(&settings, &toast.sender).1;
+    let ohoh = if settings["theme"]["estilo"].as_str() == Some("icq") {
+        crate::som_icq_como_data_url(&settings, "ohoh")
+    } else {
+        None
+    };
+    aplicar_tema(&settings, &mut resolvido, especifica, ohoh);
     mostrar_resolvido(app, resolvido)
 }
 
@@ -1555,6 +1604,40 @@ pub fn prova_janelas(app: AppHandle) {
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    /// Relato real: com o tema ICQ tocavam DOIS sons — o do contato e o
+    /// "oh-oh". Agora é um só, e o do contato vence quando a regra é dele.
+    #[test]
+    fn um_som_so_contato_especifico_vence_o_ohoh() {
+        let icq = json!({"modules":{"theme":true},"theme":{"estilo":"icq","modo":"escuro","icq":{"volume":0.4}}});
+        // sem regra específica: vira "oh-oh", no volume do ICQ
+        let mut t = toast_de_prova("a", "card", "inferior-direita", 100, 1.0, 7);
+        aplicar_tema(&icq, &mut t, false, None);
+        assert_eq!((t.sound.as_str(), t.volume, t.tema.as_str(), t.modo.as_str()), ("ohoh", 0.4, "icq", "escuro"));
+        // arquivo do usuário vai embutido
+        let mut t = toast_de_prova("b", "card", "inferior-direita", 100, 1.0, 7);
+        aplicar_tema(&icq, &mut t, false, Some("data:audio/wav;base64,UklG".into()));
+        assert_eq!(t.sound_file, "data:audio/wav;base64,UklG");
+        // regra específica do contato: o som DELA, inclusive "nenhum"
+        let mut t = toast_de_prova("c", "card", "inferior-direita", 100, 1.0, 7);
+        t.sound = "nenhum".into();
+        aplicar_tema(&icq, &mut t, true, None);
+        assert_eq!(t.sound, "nenhum");
+        // "oh-oh" desligado: som da regra padrão
+        let sem = json!({"theme":{"estilo":"icq","icq":{"ohoh":false}}});
+        let mut t = toast_de_prova("d", "card", "inferior-direita", 100, 1.0, 7);
+        let antes = t.sound.clone();
+        aplicar_tema(&sem, &mut t, false, None);
+        assert_eq!(t.sound, antes);
+        // outro tema não mexe no som, mas o toast leva o tema; módulo desligado = padrão
+        let vidro = json!({"theme":{"estilo":"vidro"}});
+        let mut t = toast_de_prova("e", "card", "inferior-direita", 100, 1.0, 7);
+        aplicar_tema(&vidro, &mut t, false, None);
+        assert_eq!((t.tema.as_str(), t.modo.as_str(), t.sound == antes), ("vidro", "auto", true));
+        let desligado = json!({"modules":{"theme":false},"theme":{"estilo":"vidro"}});
+        aplicar_tema(&desligado, &mut t, false, None);
+        assert_eq!(t.tema, "");
+    }
 
     /// REGRESSÃO MEDIDA (04/09/2026): o aviso de "settings.json inválido" não
     /// apareceu na tela. Causa: o id vinha do título ("Configuração do

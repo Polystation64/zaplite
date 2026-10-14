@@ -205,6 +205,15 @@ export function chatIdAberto() {
 /** O nome da conversa aberta, para EXIBIR (nunca para identificar). Vem do
     cabeçalho do painel de mensagens; cai na linha selecionada se o cabeçalho
     mudar de forma. */
+/** O cabeçalho da conversa aberta (nome, foto e botões do WhatsApp). */
+export function cabecalhoDaConversa() {
+  try {
+    return document.querySelector("#main header");
+  } catch (_) {
+    return null;
+  }
+}
+
 export function nomeDaConversaAberta() {
   try {
     const h = document.querySelector("#main header");

@@ -192,6 +192,53 @@ teste("seleção dentro da bolha é copiada; fora dela, não", () => {
   assert.strictEqual(selecaoNaBolha(null, sel("bom", dentro)), "");
 });
 
+/* Relato real: foto sem legenda chegava à IA como "?", e todo mundo era
+   "Contato". Dependências injetadas: o que se testa é a regra de cada uma. */
+teste("foto sem legenda vira [imagem] e o autor é o nome salvo", () => {
+  const textoComMidia = new Function(
+    "textoDaBolha",
+    "tipoDeMidia",
+    extrair("textoComMidia") + "; return textoComMidia;"
+  );
+  const com = (texto, midia) => textoComMidia(() => texto, () => midia)({});
+  assert.strictEqual(com("?", "imagem"), "[imagem]");
+  assert.strictEqual(com("", "imagem"), "[imagem]");
+  assert.strictEqual(com("festa das cores", "imagem"), "[imagem] festa das cores");
+  assert.strictEqual(com("?", ""), "?", "texto puro, sem mídia, fica como está");
+
+  const autorDaBolha = new Function(
+    "ehDeSaida",
+    "analisarPrePlainText",
+    extrair("autorDaBolha") + "; return autorDaBolha;"
+  );
+  const pre = (attr) => ({ querySelector: () => (attr ? { getAttribute: () => attr } : null) });
+  const parse = new Function(extrair("analisarPrePlainText") + "; return analisarPrePlainText;")();
+  const autor = (saida, bolha, conversa) => autorDaBolha(() => saida, parse)(bolha, conversa);
+  assert.strictEqual(autor(false, pre("[17:00, 13/10/2026] Gi: "), "Gi"), "Gi");
+  assert.strictEqual(autor(false, pre("[17:00, 13/10/2026] Ana Souza: "), "Equipe"), "Ana Souza", "grupo: quem falou");
+  assert.strictEqual(autor(false, pre(null), "Gi"), "Gi", "sem atributo: nome da conversa");
+  assert.strictEqual(autor(false, pre(null), ""), "Contato", "último recurso");
+  assert.strictEqual(autor(true, pre("[17:00, 13/10/2026] Alexandre: "), "Gi"), "Você");
+});
+
+/* Cada tema tem claro e escuro; o automático segue o modo do WhatsApp. */
+teste("modo do tema: escolha do usuário vence, automático segue o WhatsApp", () => {
+  const f = new Function(extrair("modoEfetivo") + "; return modoEfetivo;")();
+  assert.strictEqual(f("claro", true), "claro");
+  assert.strictEqual(f("escuro", false), "escuro");
+  assert.strictEqual(f("auto", true), "escuro");
+  assert.strictEqual(f(undefined, false), "claro");
+});
+
+/* Modo ICQ: o "oh-oh" de outra conversa sai do número de não lidas do título. */
+teste("não lidas saem do título da janela", () => {
+  const f = new Function(extrair("naoLidasDoTitulo") + "; return naoLidasDoTitulo;")();
+  assert.strictEqual(f("(3) WhatsApp"), 3);
+  assert.strictEqual(f("WhatsApp"), 0);
+  assert.strictEqual(f(" (12) WhatsApp Business"), 12);
+  assert.strictEqual(f(null), 0);
+});
+
 /* Segunda fonte da conversa aberta: o jid dentro do data-id da mensagem. */
 const jidDoIdDeMensagem = new Function(
   constante("JID_NO_ID_RE") + extrair("jidDoIdDeMensagem") + "; return jidDoIdDeMensagem;"

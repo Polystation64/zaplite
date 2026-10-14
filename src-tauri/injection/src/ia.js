@@ -1,4 +1,5 @@
-import { bolhasVisiveis, ehDeSaida, textoDaBolha } from "./bolhas.js";
+import { autorDaBolha, bolhasVisiveis, textoComMidia } from "./bolhas.js";
+import { nomeDaConversaAberta } from "./lista.js";
 import { settings } from "./nucleo.js";
 import { invoke } from "./ponte.js";
 
@@ -21,11 +22,12 @@ export const ORCAMENTO_MENSAGENS_BYTES = 56 * 1024;
 /** As mensagens visíveis MAIS RECENTES que cabem em `maxBytes`. Devolve o
  * texto e quantas ficaram de fora, para quem chama poder dizer isso. */
 export function coletarMensagens(limit = 200, maxBytes = ORCAMENTO_MENSAGENS_BYTES) {
+  const conversa = nomeDaConversaAberta();
   const linhas = bolhasVisiveis()
     .slice(-limit)
     .map((r) => {
-      const t = textoDaBolha(r);
-      return t ? `${ehDeSaida(r) ? "Você" : "Contato"}: ${t}` : null;
+      const t = textoComMidia(r);
+      return t ? `${autorDaBolha(r, conversa)}: ${t}` : null;
     })
     .filter(Boolean);
   const enc = new TextEncoder();

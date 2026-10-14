@@ -23,7 +23,7 @@
    ============================================================================ */
 import { connCore } from "./conn-core.js";
 import { instalarCapturaDeAudio } from "./midia.js";
-import { applyAll } from "./nucleo.js";
+import { applyAll, settings } from "./nucleo.js";
 import { boot } from "./boot.js";
 import { registrarEnvioNaoSalvo } from "./modulos/envio-nao-salvo.js";
 import { registrarAntiApagadas } from "./modulos/anti-apagadas.js";
@@ -49,6 +49,7 @@ import { registrarLembretes } from "./modulos/lembretes.js";
 import { registrarAcoesEmMassa } from "./modulos/acoes-massa.js";
 import { registrarExportar } from "./modulos/exportar.js";
 import { registrarArquivoLocal } from "./modulos/arquivo-local.js";
+import { tocarSom } from "./sons.js";
 import { registrarBaixarMassa } from "./modulos/baixar-massa.js";
 import { registrarPinExtra } from "./modulos/pin-extra.js";
 import { registrarBuscaAvancada } from "./modulos/busca-avancada.js";
@@ -156,6 +157,10 @@ registrarArquivoLocal();
 
 /* 4. O Rust chama isto ao salvar settings. */
 window.__ZAPLITE_RELOAD__ = applyAll;
+/* 4b. "Ouvir" do Painel (modo ICQ): o Rust repassa o nome de um som da
+       lista fixa (`tocar_som_teste`); aqui ele toca com o volume salvo. */
+window.__ZAPLITE_SOM__ = (nome) =>
+  tocarSom(nome, settings.theme && settings.theme.icq && settings.theme.icq.volume);
 
 /* 5. Sobe. */
 boot();

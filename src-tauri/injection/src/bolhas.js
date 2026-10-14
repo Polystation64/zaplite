@@ -178,6 +178,53 @@ export function textoDaBolha(bolha) {
   }
 }
 
+/* PURA e testada (`bundle.test.js`). O WhatsApp põe em `data-pre-plain-text`
+   exatamente `"[13:38, 15/08/2026] Fulano: "`. É a única fonte estruturada de
+   autor e horário dentro da bolha — o resto é texto de tela. */
+export function analisarPrePlainText(pre) {
+  const s = String(pre || "").trim();
+  const m = s.match(/^\[([^\],]+),\s*([^\]]+)\]\s*(.*?):\s*$/);
+  if (!m) return { hora: "", data: "", autor: "" };
+  return { hora: m[1].trim(), data: m[2].trim(), autor: m[3].trim() };
+}
+
+export function tipoDeMidia(bolha) {
+  try {
+    if (imagemDaBolha(bolha)) return "imagem";
+    if (bolha.querySelector("video")) return "vídeo";
+    if (bolha.querySelector('audio,[data-testid="ptt-status"],[data-icon="ptt-status"]')) return "áudio";
+    if (bolha.querySelector('[data-icon="document"],[data-testid="document-thumb"]')) return "documento";
+  } catch (_) {}
+  return "";
+}
+
+/** Quem escreveu, como VOCÊ salvou o contato: o `data-pre-plain-text` traz
+ * o nome da agenda (ou o número, se não está salvo). Em conversa individual
+ * sem esse atributo, cai no nome da conversa aberta; só em último caso
+ * "Contato". */
+export function autorDaBolha(bolha, nomeDaConversa) {
+  if (!bolha) return "";
+  if (ehDeSaida(bolha)) return "Você";
+  try {
+    const pre = bolha.querySelector("[data-pre-plain-text]");
+    const autor = analisarPrePlainText(pre && pre.getAttribute("data-pre-plain-text")).autor;
+    if (autor) return autor;
+  } catch (_) {}
+  return (nomeDaConversa || "").trim() || "Contato";
+}
+
+/** O texto como a IA deve ver: mídia ganha rótulo (`[imagem]`, `[áudio]`…),
+ * e a legenda vem junto quando existe. Sem isto, foto sem legenda chegava à
+ * IA como "?" — um resto de texto de tela (relato real). Texto sem letra nem
+ * número numa bolha de mídia é resto, não legenda. */
+export function textoComMidia(bolha) {
+  const texto = (textoDaBolha(bolha) || "").trim();
+  const midia = tipoDeMidia(bolha);
+  if (!midia) return texto;
+  const legenda = /[\p{L}\p{N}]/u.test(texto) ? texto : "";
+  return legenda ? `[${midia}] ${legenda}` : `[${midia}]`;
+}
+
 /* O jid da conversa dentro do `data-id` da mensagem: `false_<jid>_<id>`
    (`true_` quando é nossa; grupos têm um `_<participante>` no fim). É a
    segunda fonte da identidade da conversa aberta, para quando a linha dela

@@ -19,6 +19,7 @@
     "allow-load-settings-public",
     "allow-save-module-data",
     "allow-arquivo-registrar",
+    "allow-ler-som-icq",
     "allow-log-agendamento",
     "allow-note-get",
     "allow-note-ids",

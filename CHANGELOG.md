@@ -17,6 +17,21 @@ Regras, para o aviso nunca mentir:
 
 <!-- Escreva a versão nova AQUI EM CIMA, logo abaixo desta linha. -->
 
+## 0.1.8
+
+IA sem chave de API.
+
+* Novo provedor **ChatGPT**: entre com sua conta Plus ou Pro pelo login oficial da OpenAI ("Sign in with ChatGPT") e os recursos de IA usam a cota do seu plano. O login abre no navegador do sistema; o token fica cifrado no Windows e nunca passa pela janela do WhatsApp. Ao atingir o limite do plano, o ZapLite avisa e não insiste.
+* **Gemini grátis**: botão "Obter chave grátis no Google AI Studio", que abre a página da chave para você colar no Painel. A cota gratuita do Google não pede cartão.
+* Quatro temas novos em Personalização, cada um com cor, fonte e efeitos próprios e com versão **clara e escura** (no automático, seguem o tema do próprio WhatsApp): **Vidro Líquido** (camadas de vidro e aurora), **Brutal** (bordas grossas e sombra dura), **Terminal** (CRT de fósforo verde no escuro, visor LCD no claro) e **ICQ 2000** (Windows 2000, Tahoma), este com som de tecla ao digitar, de borracha ao apagar e "oh-oh" quando chega mensagem. Os sons vêm sintetizados pelo ZapLite, e dá para trocar cada um por um arquivo de áudio seu.
+* As janelas de notificação seguem o tema escolhido (claro ou escuro), com a mesma fonte e as mesmas cores.
+* No tema ICQ, cada mensagem toca um som só: se o contato tem uma regra com som próprio, vale o dele; senão, a notificação toca o "oh-oh".
+* A IA passa a chamar cada pessoa pelo nome que você salvou (e não "Contato"), e fotos, áudios e vídeos aparecem como "[imagem]", "[áudio]"… com a legenda, em vez de um "?" solto.
+* O botão de nota no topo da conversa não fica mais em cima do nome do contato.
+* "Modelo para imagem" virou uma escolha: o padrão é usar o mesmo modelo do texto, e dá para escolher outro da lista do provedor (ou digitar um nome). Vale para todos os provedores, e cada provedor lembra a sua escolha.
+* Claude Desktop: o Painel mostra quais conversas recentes da sua lista ainda não estão no arquivo local. Com o módulo "Arquivo local para o Claude" ligado, basta abrir cada uma uma vez; dali em diante ela se atualiza sozinha.
+* Claude e Gemini não ganharam "entrar com a conta" de propósito: Anthropic e Google proíbem usar o login da assinatura em apps de terceiros, e o Google já bloqueou contas por isso.
+
 ## 0.1.7
 
 Esta versão deixa as operações mais seguras e leves no uso diário.

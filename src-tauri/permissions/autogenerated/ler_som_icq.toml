@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ler-som-icq"
+description = "Enables the ler_som_icq command without any pre-configured scope."
+commands.allow = ["ler_som_icq"]
+
+[[permission]]
+identifier = "deny-ler-som-icq"
+description = "Denies the ler_som_icq command without any pre-configured scope."
+commands.deny = ["ler_som_icq"]

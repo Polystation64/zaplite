@@ -35,6 +35,9 @@ pub enum Provider {
     /// Fala o dialeto da OpenAI em `http://localhost:20128/v1`, não pede chave
     /// e expõe apelidos `auto/*` que escolhem o modelo real por tarefa.
     OmniRoute,
+    /// "Sign in with ChatGPT": cota do plano Plus/Pro, sem chave de API. A
+    /// "chave" é o refresh token do login; ver `chatgpt.rs`.
+    ChatGPT,
 }
 
 /// URL base de fábrica do OmniRoute. Editável no Painel — a porta pode mudar.
@@ -59,6 +62,7 @@ impl Provider {
             "openrouter" => Some(Provider::OpenRouter),
             "compatible" | "compativel" | "openai-compatible" => Some(Provider::Compatible),
             "omniroute" | "omni-route" => Some(Provider::OmniRoute),
+            "chatgpt" => Some(Provider::ChatGPT),
             _ => None,
         }
     }
@@ -79,6 +83,7 @@ impl Provider {
             Provider::OpenRouter => "openrouter",
             Provider::Compatible => "compatible",
             Provider::OmniRoute => "omniroute",
+            Provider::ChatGPT => "chatgpt",
         }
     }
 
@@ -90,6 +95,7 @@ impl Provider {
             Provider::OpenRouter => "OpenRouter",
             Provider::Compatible => "Compatível com OpenAI (URL base)",
             Provider::OmniRoute => "OmniRoute (roteador local)",
+            Provider::ChatGPT => "ChatGPT (sua conta Plus/Pro)",
         }
     }
 
@@ -103,6 +109,7 @@ impl Provider {
             Provider::OpenRouter => "openrouterKey",
             Provider::Compatible => "compatibleKey",
             Provider::OmniRoute => "omnirouteKey",
+            Provider::ChatGPT => "chatgptRefreshToken",
         }
     }
 
@@ -114,6 +121,9 @@ impl Provider {
             Provider::OpenRouter => "anthropic/claude-3.5-haiku",
             Provider::Compatible => "llama3.1",
             Provider::OmniRoute => "auto/best-fast",
+            // Sem padrão: os modelos dependem da conta. O login escolhe um do
+            // catálogo dela (`GET /v1/models`).
+            Provider::ChatGPT => "",
         }
     }
 
@@ -150,6 +160,7 @@ pub const CAMPOS_DE_CHAVE: &[&str] = &[
     "openrouterKey",
     "compatibleKey",
     "omnirouteKey",
+    "chatgptRefreshToken",
 ];
 
 #[allow(dead_code)] // idem
@@ -160,6 +171,7 @@ pub const TODOS_OS_PROVEDORES: &[Provider] = &[
     Provider::OpenRouter,
     Provider::Compatible,
     Provider::OmniRoute,
+    Provider::ChatGPT,
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,6 +220,9 @@ pub fn resolve(settings: &Value) -> Result<Config, String> {
         .unwrap_or("")
         .trim()
         .to_string();
+    if provider == Provider::ChatGPT && key.is_empty() {
+        return Err("Entre com sua conta ChatGPT no Painel (IA & TRANSCRIÇÃO).".into());
+    }
     if provider.requires_key() && key.is_empty() {
         return Err(format!(
             "Configure a chave de {} no Painel (aba IA).",
@@ -284,6 +299,16 @@ pub fn build_request(
     let mime = media_type.unwrap_or("image/jpeg");
 
     match cfg.provider {
+        // Só para inspeção/testes: `executar_detalhado` desvia o ChatGPT para
+        // `chatgpt::executar`, que lê o stream SSE.
+        Provider::ChatGPT => Requisicao {
+            url: "https://api.openai.com/v1/responses".into(),
+            headers: vec![
+                ("authorization".into(), format!("Bearer {}", cfg.key)),
+                ("content-type".into(), "application/json".into()),
+            ],
+            body: crate::chatgpt::corpo_da_resposta(&cfg.model, system, prompt, image_b64, media_type),
+        },
         Provider::Anthropic => {
             let mut content: Vec<Value> = Vec::new();
             if let Some(img) = image_b64 {
@@ -433,6 +458,8 @@ pub fn extract_text(provider: Provider, data: &Value) -> String {
         Provider::Gemini => {
             juntar_textos(data["candidates"][0]["content"]["parts"].as_array())
         }
+        // Lido do stream em `chatgpt::ler_stream`, não daqui.
+        Provider::ChatGPT => String::new(),
         Provider::OpenAI | Provider::OpenRouter | Provider::Compatible | Provider::OmniRoute => {
             let c = &data["choices"][0]["message"]["content"];
             match c {
@@ -507,7 +534,7 @@ pub fn extract_error(status: u16, corpo: &str) -> String {
     format!("API retornou {status}: {detalhe}")
 }
 
-fn truncar(s: &str, n: usize) -> String {
+pub(crate) fn truncar(s: &str, n: usize) -> String {
     if s.chars().count() <= n {
         s.to_string()
     } else {
@@ -543,7 +570,7 @@ pub struct Resposta {
     pub modelo: String,
 }
 
-fn http_client() -> Result<&'static reqwest::Client, String> {
+pub(crate) fn http_client() -> Result<&'static reqwest::Client, String> {
     static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
     CLIENT.get_or_init(|| reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(15)).timeout(Duration::from_secs(120))
@@ -569,6 +596,10 @@ pub async fn executar_detalhado(
     image_b64: Option<&str>,
     media_type: Option<&str>,
 ) -> Result<Resposta, String> {
+    // Responses API em streaming, não chat/completions: outro contrato.
+    if cfg.provider == Provider::ChatGPT {
+        return crate::chatgpt::executar(cfg, system, prompt, image_b64, media_type).await;
+    }
     let req = build_request(cfg, system, prompt, image_b64, media_type);
 
     let client = http_client()?;
@@ -623,6 +654,9 @@ pub async fn executar_detalhado(
 /// N3 — catálogo de modelos do provedor. Só faz sentido no dialeto OpenAI;
 /// nos outros o Painel cai no campo livre.
 pub async fn listar_modelos(cfg: &Config) -> Result<Vec<String>, String> {
+    if cfg.provider == Provider::ChatGPT {
+        return crate::chatgpt::listar_modelos(cfg).await;
+    }
     if !cfg.provider.e_dialeto_openai() {
         return Err(format!(
             "{} não publica catálogo de modelos neste formato.",
@@ -673,19 +707,19 @@ pub async fn listar_modelos(cfg: &Config) -> Result<Vec<String>, String> {
 // O consentimento abre no NAVEGADOR DO SISTEMA — nunca dentro da webview do
 // WhatsApp, que roda a sessão real do usuário.
 
-static OAUTH_EM_ANDAMENTO: AtomicBool = AtomicBool::new(false);
+pub(crate) static OAUTH_EM_ANDAMENTO: AtomicBool = AtomicBool::new(false);
 
 const OAUTH_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// Guarda que solta o "em andamento" mesmo se a função sair por `?`.
-struct Trava;
+pub(crate) struct Trava;
 impl Drop for Trava {
     fn drop(&mut self) {
         OAUTH_EM_ANDAMENTO.store(false, Ordering::SeqCst);
     }
 }
 
-fn verificador_pkce() -> String {
+pub(crate) fn verificador_pkce() -> String {
     use rand::Rng;
     const ALFABETO: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
     let mut rng = rand::rng();
@@ -709,7 +743,7 @@ pub fn url_de_autorizacao(callback: &str, desafio: &str) -> String {
 }
 
 /// Percent-encoding mínimo (não vale a pena uma dependência para isto).
-fn percent(s: &str) -> String {
+pub(crate) fn percent(s: &str) -> String {
     let mut out = String::with_capacity(s.len() * 3);
     for b in s.as_bytes() {
         match b {
@@ -749,7 +783,7 @@ pub fn ler_retorno(linha_de_requisicao: &str) -> Option<Result<String, String>> 
     }
 }
 
-fn despercent(s: &str) -> String {
+pub(crate) fn despercent(s: &str) -> String {
     let bytes = s.replace('+', " ").into_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -770,7 +804,7 @@ fn despercent(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn pagina(titulo: &str, corpo: &str) -> String {
+pub(crate) fn pagina(titulo: &str, corpo: &str) -> String {
     let html = format!(
         "<!doctype html><html lang=pt-BR><meta charset=utf-8>\
          <title>ZapLite</title>\
@@ -899,7 +933,7 @@ pub async fn ai_complete(
         return Err("Entrada muito grande: selecione menos mensagens ou uma imagem menor (limite de 9 MB).".into());
     }
     let settings = crate::read_settings(&app);
-    let cfg = resolve(&settings)?;
+    let cfg = crate::chatgpt::preparar(&app, resolve(&settings)?).await?;
     if image_b64.is_some() {
         conferir_visao(&cfg)?;
     }
@@ -954,9 +988,11 @@ pub fn ai_status(app: AppHandle) -> Value {
             // outros ela é resto de configuração antiga e confundiria o estado.
             "baseUrl": if cfg.provider.usa_base_url() { cfg.base_url } else { String::new() },
             "needsKey": cfg.provider.requires_key(),
-            "canListModels": cfg.provider.e_dialeto_openai(),
+            "canListModels": cfg.provider.e_dialeto_openai() || cfg.provider == Provider::ChatGPT,
             "visionModel": cfg.vision_model,
             "keyTail": mascarar(&cfg.key),
+            "account": settings["chatgptEmail"].as_str().unwrap_or(""),
+            "planUsage": settings["chatgptPlanUsage"].as_bool().unwrap_or(false),
             "reason": ""
         }),
         Err(motivo) => {
@@ -987,7 +1023,7 @@ pub fn ai_status(app: AppHandle) -> Value {
 #[tauri::command]
 pub async fn ai_test(app: AppHandle) -> Result<String, String> {
     let settings = crate::read_settings(&app);
-    let cfg = resolve(&settings)?;
+    let cfg = crate::chatgpt::preparar(&app, resolve(&settings)?).await?;
     let r = executar_detalhado(
         &cfg,
         "Responda com uma única palavra.",
@@ -1017,7 +1053,11 @@ pub async fn ai_test(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub async fn ai_models(app: AppHandle) -> Result<Vec<String>, String> {
     let settings = crate::read_settings(&app);
-    let cfg = resolve(&settings)?;
+    let mut cfg = resolve(&settings)?;
+    if cfg.provider == Provider::ChatGPT {
+        // Listar não precisa de modelo escolhido — é justamente para escolher.
+        cfg.key = crate::chatgpt::token_de_acesso(&app).await?;
+    }
     listar_modelos(&cfg).await
 }
 
@@ -1840,7 +1880,10 @@ mod testes {
                 p.id()
             );
             assert_eq!(Provider::from_id(p.id()), Some(*p));
-            assert!(!p.default_model().is_empty());
+            // ChatGPT é a única exceção: o catálogo é DA CONTA e nenhum modelo
+            // é garantido. Pedido sem modelo nunca sai — `chatgpt::preparar`
+            // recusa com mensagem, e o login escolhe um do catálogo.
+            assert!(!p.default_model().is_empty() || *p == Provider::ChatGPT, "{}", p.id());
         }
     }
 }

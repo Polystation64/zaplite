@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-limpar-som-icq"
+description = "Enables the limpar_som_icq command without any pre-configured scope."
+commands.allow = ["limpar_som_icq"]
+
+[[permission]]
+identifier = "deny-limpar-som-icq"
+description = "Denies the limpar_som_icq command without any pre-configured scope."
+commands.deny = ["limpar_som_icq"]

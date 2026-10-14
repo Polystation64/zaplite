@@ -7,7 +7,7 @@ let observer = null, fallback = null, timer = null;
    <body> sem classe fazia TODA mutação da página ser ignorada com a janela
    sem foco. Classe nova aplicada com `classList.add` em nó alheio entra
    aqui — o bundle.test.js falha se faltar. */
-export const MARCADORES_EM_NO_ALHEIO = new Set(["zl-blur", "zl-bsc-alvo", "zl-nsfw-alvo", "zl-nsfw-livre"]);
+export const MARCADORES_EM_NO_ALHEIO = new Set(["zl-blur", "zl-bsc-alvo", "zl-nsfw-alvo", "zl-nsfw-livre", "zl-in", "zl-out"]);
 function nosso(no) {
   const sel = '[id^="zl-"],[class^="zl-"]';
   const el = no && (no.nodeType === 1 ? no : no.parentElement);

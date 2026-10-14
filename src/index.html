@@ -112,6 +112,21 @@
   .swatches{display:flex;gap:10px;flex-wrap:wrap}
   .swatch{width:34px;height:34px;border-radius:9px;cursor:pointer;border:2px solid transparent}
   .swatch.sel{border-color:#fff}
+  .temas{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px}
+  .tema{border:2px solid var(--line-2);border-radius:12px;padding:8px;cursor:pointer;background:var(--panel-2);text-align:left}
+  .tema.sel{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
+  .tema .prev{height:96px;border-radius:8px;overflow:hidden;margin-bottom:8px;display:grid;grid-template-columns:1fr 1fr}
+  .tema .meia{padding:8px;display:flex;flex-direction:column;gap:6px;justify-content:center;min-width:0}
+  .tema .meia i{max-width:92%!important}
+  .modos{display:inline-flex;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;margin-bottom:12px}
+  .modos button{background:transparent;color:var(--muted);border:none;padding:7px 14px;cursor:pointer;font:inherit;font-size:12.5px}
+  .modos button.sel{background:var(--accent);color:#04120e}
+  .som-linha{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .som-linha .nome{min-width:120px;font-size:13px}
+  .som-linha .arq{font-size:12px;color:var(--muted)}
+  .tema .prev i{font-style:normal;font-size:11px;padding:5px 8px;max-width:78%;line-height:1.25}
+  .tema b{display:block;font-size:12.5px}
+  .tema small{display:block;color:var(--muted);font-size:11px;line-height:1.35;margin-top:2px}
   .hint{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5}
   .hint code{font-family:'Cascadia Mono','Consolas',ui-monospace,monospace;color:#7dd3fc;background:var(--panel-2);
     padding:1px 5px;border-radius:4px}
@@ -352,6 +367,36 @@
   <section class="page" id="page-custom">
     <div class="rows">
       <div class="field">
+        <label class="k">Tema</label>
+        <div class="modos" id="temaModos">
+          <button type="button" data-modo="auto">Automático (segue o WhatsApp)</button>
+          <button type="button" data-modo="claro">Claro</button>
+          <button type="button" data-modo="escuro">Escuro</button>
+        </div>
+        <div class="temas" id="temas"></div>
+        <div class="hint">
+          Cada tema muda cor, <b>fonte</b> e efeitos do WhatsApp inteiro. Só usa fontes que já vêm no
+          Windows, e os efeitos com movimento (aurora, cintilação) param se o Windows estiver com
+          “mostrar animações” desligado. Clique em <b>Salvar e aplicar</b> para ver no WhatsApp.
+        </div>
+      </div>
+      <div class="field" id="icqSons">
+        <label class="k">Sons do ICQ</label>
+        <div class="slider-row" style="margin-top:12px">
+          <input type="range" id="icqVolume" min="0" max="100" step="5" />
+          <span id="icqVolumeVal" style="font-size:12px;color:var(--muted)">60%</span>
+        </div>
+        <div id="icqLinhas"></div>
+        <div class="hint">
+          Sem arquivo escolhido, o ZapLite toca um som <b>sintetizado</b> por ele (uma lembrança do ICQ,
+          não a gravação original). Com <b>“Usar meu arquivo…”</b> você escolhe um áudio seu (.wav, .mp3,
+          .ogg, até 2 MB): ele fica só nesta máquina e o ZapLite não o distribui. A tecla e a borracha só
+          soam na caixa de mensagem; o “oh-oh” quando chega mensagem na conversa aberta ou as não lidas
+          aumentam. “Ouvir” toca na janela do WhatsApp com o volume já salvo.
+        </div>
+        <div class="hint" id="icqOut"></div>
+      </div>
+      <div class="field">
         <label class="k">Cor de acento</label>
         <div class="swatches" id="swatches"></div>
         <input type="text" id="accentHex" style="margin-top:12px" placeholder="#22d3aa" />
@@ -420,7 +465,8 @@
         <select id="aiProvider">
           <option value="anthropic">Anthropic (Claude) — chave</option>
           <option value="openai">OpenAI — chave</option>
-          <option value="gemini">Google Gemini — chave</option>
+          <option value="gemini">Google Gemini — chave grátis do Google AI Studio</option>
+          <option value="chatgpt">ChatGPT — entrar com sua conta Plus/Pro (sem chave)</option>
           <option value="openrouter">OpenRouter — chave ou login (centenas de modelos)</option>
           <option value="omniroute">OmniRoute (roteador local) — sem chave, escolhe o modelo por tarefa</option>
           <option value="compatible">Compatível com OpenAI (URL base) — Ollama, LM Studio, Groq, DeepSeek…</option>
@@ -436,6 +482,36 @@
           num servidor temporário em <code>127.0.0.1</code> que fecha logo depois. A chave nunca
           passa pela janela do WhatsApp. É o único provedor da lista com OAuth de verdade para uso
           de API — os outros trabalham com chave.
+        </div>
+      </div>
+
+      <div class="field" id="chatgptField">
+        <label class="k">Sua conta ChatGPT</label>
+        <div class="hint" id="chatgptEstado" style="margin-top:0">não conectado</div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
+          <button class="primary" id="chatgptEntrar">Entrar com ChatGPT</button>
+          <button class="primary" id="chatgptSair"
+            style="background:transparent;color:var(--muted);border:1px solid var(--line-2)">Sair</button>
+        </div>
+        <div class="hint">
+          Login <b>oficial</b> da OpenAI (“Sign in with ChatGPT”) para apps open-source: o uso sai da
+          cota do seu plano <b>Plus ou Pro</b>, sem chave de API. Abre o <b>navegador do sistema</b>;
+          o ZapLite recebe o retorno num servidor temporário em <code>127.0.0.1</code>. O token fica
+          cifrado no Windows e nunca passa pela janela do WhatsApp. O ChatGPT tem limite de uso por
+          plano — ao atingir, o ZapLite avisa e não insiste.
+        </div>
+        <div class="hint" id="chatgptOut" style="white-space:pre-wrap"></div>
+      </div>
+
+      <div class="field" id="geminiField">
+        <label class="k">Chave grátis da Gemini</label>
+        <button class="primary" id="geminiObter">Obter chave grátis no Google AI Studio</button>
+        <div class="hint">
+          Abre o <b>Google AI Studio</b> no navegador: entre com sua conta Google, clique em
+          <b>Create API key</b>, copie a chave (começa com <code>AIza</code>) e cole no campo
+          “Chave da API” abaixo. Depois clique em <b>Testar</b>. A cota gratuita não pede cartão.
+          É o caminho oficial — o login da conta Google/Gemini CLI em apps de terceiros é proibido
+          pelo Google e já bloqueou contas.
         </div>
       </div>
 
@@ -463,14 +539,16 @@
       </div>
 
       <div class="field" id="aiVisionField">
-        <label class="k">Modelo para imagem (OCR e detector de golpe)</label>
-        <input type="text" id="aiVisionModel" list="aiModelSug" placeholder="claude/claude-haiku-4-5-20251001" />
+        <label class="k">Modelo para imagem (OCR, detector de golpe, figurinha)</label>
+        <select id="aiVisionSel"></select>
+        <input type="text" id="aiVisionModel" list="aiModelSug" placeholder="nome exato de um modelo com visão"
+          style="margin-top:8px" />
         <div class="hint">
-          Toda chamada com imagem usa este modelo — o de cima continua valendo para texto.
+          O padrão é <b>usar o mesmo modelo do texto</b> — o certo quando ele lê imagem (como os do ChatGPT,
+          Claude e Gemini). Escolha outro só se o seu modelo de texto não aceitar imagem.
+          A lista é a mesma de “Buscar modelos”; “Outro” deixa digitar um nome.
           <b>Não use um apelido <code>auto/*</code> aqui</b>: medimos que o roteador descarta a imagem
-          antes de escolher o modelo (inclusive em <code>auto/best-vision</code>) e a resposta vira
-          “não recebi nenhuma imagem”. Um id concreto de modelo com visão funciona.
-          Em branco = o padrão acima.
+          antes de escolher o modelo (inclusive em <code>auto/best-vision</code>).
         </div>
       </div>
 
@@ -515,6 +593,8 @@
             style="background:transparent;color:var(--muted);border:1px solid var(--line-2)">Apagar arquivo local</button>
         </div>
         <div class="hint" id="mcpOut" style="white-space:pre-wrap"></div>
+        <label class="k" style="margin-top:14px">Conversas recentes que ainda não estão no arquivo</label>
+        <div class="hint" id="mcpFaltam" style="margin-top:0">verificando…</div>
       </div>
       <div class="field">
         <label class="k">Tom das respostas sugeridas</label>
@@ -995,7 +1075,7 @@
     {id:"videoCompress",n:22,t:"Compressor de vídeo", d:"Comprime antes de enviar, ou manda como documento.", tag:""},
     {id:"screenRec",   n:23, t:"Gravador de tela/GIF", d:"Grava e envia direto na conversa.", tag:""},
     {id:"alwaysOnTop", n:24, t:"Sempre no topo", d:"Janela flutuante acima das outras.", tag:""},
-    {id:"theme",       n:25, t:"Tema e acento", d:"Dark reforçado e cor personalizada.", tag:""},
+    {id:"theme",       n:25, t:"Tema e acento", d:"Cor de acento e quatro temas completos (cor, fonte e efeitos): Vidro Líquido, Brutal, Terminal CRT e ICQ 2000 — este com os sons de tecla, borracha e “oh-oh”. Escolha em PERSONALIZAÇÃO.", tag:""},
     {id:"declutter",   n:26, t:"Esconder itens", d:"Some com Status, Canais e Comunidades.", tag:""},
     {id:"globalHotkey",n:27, t:"Atalho global", d:"Torna os atalhos <b>configuráveis</b>: esconder/mostrar o app, abrir o Painel e (opcional) abrir o formulário de novo lembrete — registrados no Windows, então funcionam com a janela escondida. <b>Nasce desligado</b> porque ligá-lo faz o ZapLite tomar combinações de tecla do sistema inteiro. Se outro programa já tiver tomado uma delas, o registro falha, o app segue normal e a tabela abaixo diz qual falhou e por quê. Nenhuma ação abre conversa (abrir mandaria recibo de leitura).", tag:"local"},
     {id:"multiAccount",n:28, t:"Multi-conta", d:"<b>Uma conta de cada vez, com isolamento total</b> — e não “em abas”, como esta linha prometia antes. Criar, listar, remover e trocar de conta ficam na aba <b>CONTAS</b> deste painel; não há interruptor aqui porque isto não é um módulo da página, é a estrutura do app.<br><br>Cada conta tem a <b>própria sessão do WhatsApp</b> (perfil próprio do WebView2 — sem isso as sessões se sobrescrevem), o próprio <code>settings.json</code> e o próprio <code>connection.log</code>. Como cada conta é uma pasta, notas, regras de notificação, fixados extras, respostas rápidas, lembretes e agendamentos <b>não têm por onde se misturar</b>. Trocar de conta reinicia o ZapLite na conta escolhida.<br><br><b>Duas contas abertas ao mesmo tempo não existem</b>, e o porquê está escrito na aba CONTAS.", tag:""},
@@ -1433,7 +1513,150 @@
     };
   })();
 
+  /* Temas: a prévia é desenhada aqui mesmo, com a mesma fonte e paleta que o
+     tema aplica no WhatsApp (src-tauri/injection/src/temas.js). */
+  const TEMAS_PAINEL = [
+    {id:"", nome:"Padrão", desc:"O WhatsApp de sempre, com a sua cor de acento.", fonte:"Segoe UI,sans-serif",
+     claro:{fundo:"#efeae2", in:"background:#fff;color:#111b21;border-radius:8px", out:"background:#d9fdd3;color:#111b21;border-radius:8px"},
+     escuro:{fundo:"#0b141a", in:"background:#202c33;color:#e9edef;border-radius:8px", out:"background:#005c4b;color:#e9edef;border-radius:8px"}},
+    {id:"vidro", nome:"Vidro Líquido", desc:"Camadas de vidro, aurora animada, Segoe UI Variable. A estética de 2026.",
+     fonte:'"Segoe UI Variable Text","Segoe UI",sans-serif',
+     claro:{fundo:"radial-gradient(circle at 15% 20%,#c4b5fd,transparent 60%),radial-gradient(circle at 90% 30%,#a5e8ff,transparent 60%),#eef1fb",
+            in:"background:rgba(255,255,255,.7);color:#1b1d33;border:1px solid #fff;border-radius:12px;box-shadow:0 4px 10px rgba(40,50,90,.15)",
+            out:"background:rgba(167,139,250,.45);color:#1b1d33;border:1px solid #fff;border-radius:12px"},
+     escuro:{fundo:"radial-gradient(circle at 15% 20%,#7c3aed,transparent 60%),radial-gradient(circle at 90% 30%,#00c8ff88,transparent 60%),#0b0d1c",
+            in:"background:rgba(255,255,255,.12);color:#f3f4ff;border:1px solid rgba(255,255,255,.2);border-radius:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.3)",
+            out:"background:rgba(124,58,237,.5);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:12px"}},
+    {id:"brutal", nome:"Brutal", desc:"Neobrutalismo: borda grossa, sombra dura, cor chapada, Bahnschrift.", fonte:"Bahnschrift,sans-serif",
+     claro:{fundo:"#fff4cc", in:"background:#fff;color:#111;border:2px solid #111;box-shadow:3px 3px 0 #111",
+            out:"background:#ffd23f;color:#111;border:2px solid #111;box-shadow:3px 3px 0 #111"},
+     escuro:{fundo:"#151515", in:"background:#262626;color:#f5f5f5;border:2px solid #f2f2f2;box-shadow:3px 3px 0 #ffd23f",
+            out:"background:#ffd23f;color:#111;border:2px solid #111;box-shadow:3px 3px 0 #ffd23f"}},
+    {id:"terminal", nome:"Terminal", desc:"Escuro: CRT de fósforo verde. Claro: visor LCD monocromático dos anos 90.",
+     fonte:'"Cascadia Mono",Consolas,monospace',
+     claro:{fundo:"repeating-linear-gradient(90deg,rgba(15,56,15,.06) 0 1px,transparent 1px 3px),#c4cfa1",
+            in:"color:#0f380f;border:1px solid rgba(15,56,15,.5);border-left:3px solid #0f380f",
+            out:"color:#0f380f;background:rgba(15,56,15,.1);border:1px solid rgba(15,56,15,.5);border-right:3px solid #0f380f"},
+     escuro:{fundo:"repeating-linear-gradient(0deg,rgba(0,0,0,.35) 0 1px,transparent 1px 3px),#030603",
+            in:"color:#3dff86;border:1px solid rgba(61,255,134,.4);border-left:3px solid #3dff86;text-shadow:0 0 5px rgba(61,255,134,.6)",
+            out:"color:#3dff86;background:rgba(61,255,134,.08);border:1px solid rgba(61,255,134,.4);border-right:3px solid #3dff86;text-shadow:0 0 5px rgba(61,255,134,.6)"}},
+    {id:"icq", nome:"ICQ 2000", desc:"Windows 2000 de dia, versão noturna à noite — e os sons: tecla, borracha e “oh-oh”.",
+     fonte:"Tahoma,Verdana,sans-serif",
+     claro:{fundo:"linear-gradient(90deg,#0a246a,#3a6ea5 55%,#a6caf0) top/100% 14px no-repeat,#ece9d8",
+            in:"background:#ffffe1;color:#000;border:1px solid #808080;margin-top:8px", out:"background:#dfeaff;color:#000;border:1px solid #7f9db9"},
+     escuro:{fundo:"linear-gradient(90deg,#06122e,#123a6e 55%,#2d5f9a) top/100% 14px no-repeat,#1a1a1a",
+            in:"background:#3b3820;color:#f0f0e0;border:1px solid #5a5a5a;margin-top:8px", out:"background:#1f2f4a;color:#f0f0e0;border:1px solid #3d5a85"}},
+  ];
+  const SONS_ICQ = [["tecla","Tecla ao digitar","teclas"],["borracha","Borracha ao apagar","borracha"],["ohoh","“Oh-oh” ao chegar mensagem","ohoh"]];
+
+  function meiaPrevia(t, lado){
+    const m = document.createElement("div");
+    m.className = "meia";
+    m.style.background = t[lado].fundo;
+    m.style.fontFamily = t.fonte;
+    const a = document.createElement("i"); a.style.cssText = t[lado].in;  a.textContent = "Chegou?";
+    const b = document.createElement("i"); b.style.cssText = t[lado].out + ";align-self:flex-end"; b.textContent = "Já vai 👍";
+    m.append(a, b);
+    return m;
+  }
+
+  function renderTemas(){
+    const box = document.getElementById("temas");
+    box.textContent = "";
+    S.theme = S.theme || {};
+    const atual = S.theme.estilo || "";
+    const modo = S.theme.modo || "auto";
+    document.querySelectorAll("#temaModos button").forEach(b => b.classList.toggle("sel", b.dataset.modo === modo));
+    TEMAS_PAINEL.forEach(t=>{
+      const c = document.createElement("button");
+      c.type = "button";
+      c.className = "tema" + (t.id === atual ? " sel" : "");
+      const prev = document.createElement("div");
+      prev.className = "prev";
+      // As duas versões lado a lado; com modo forçado, só a escolhida.
+      if(modo === "escuro") prev.append(meiaPrevia(t,"escuro"), meiaPrevia(t,"escuro"));
+      else if(modo === "claro") prev.append(meiaPrevia(t,"claro"), meiaPrevia(t,"claro"));
+      else prev.append(meiaPrevia(t,"claro"), meiaPrevia(t,"escuro"));
+      const nome = document.createElement("b"); nome.textContent = t.nome;
+      const desc = document.createElement("small"); desc.textContent = t.desc;
+      c.append(prev, nome, desc);
+      c.onclick = ()=>{ S.theme.estilo = t.id; renderTemas(); };
+      box.appendChild(c);
+    });
+    renderSonsIcq();
+  }
+
+  function renderSonsIcq(){
+    const icq = (S.theme.icq = S.theme.icq || {});
+    document.getElementById("icqSons").style.display = (S.theme.estilo || "") === "icq" ? "" : "none";
+    const vol = Math.round(100 * (Number.isFinite(Number(icq.volume)) ? Number(icq.volume) : 0.6));
+    document.getElementById("icqVolume").value = vol;
+    document.getElementById("icqVolumeVal").textContent = vol + "%";
+    const arquivos = S.icqSonsArquivos || {};
+    const box = document.getElementById("icqLinhas");
+    box.textContent = "";
+    SONS_ICQ.forEach(([som, rotulo, chave])=>{
+      const linha = document.createElement("div"); linha.className = "som-linha";
+      const lig = document.createElement("label"); lig.className = "nome";
+      lig.style.cssText = "display:flex;gap:8px;align-items:center";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = icq[chave] !== false;
+      cb.onchange = ()=>{ S.theme.icq[chave] = cb.checked; };
+      lig.append(cb, document.createTextNode(rotulo));
+      const botao = (txt, fn, principal) => {
+        const b = document.createElement("button"); b.type = "button"; b.className = "primary"; b.textContent = txt;
+        b.style.cssText = principal ? "background:transparent;color:var(--accent);border:1px solid var(--accent);padding:6px 12px"
+                                    : "background:transparent;color:var(--muted);border:1px solid var(--line-2);padding:6px 12px";
+        b.onclick = fn; return b;
+      };
+      const caminho = arquivos[som] || "";
+      const arq = document.createElement("span"); arq.className = "arq";
+      arq.textContent = caminho ? "arquivo: " + caminho.split(/[\\/]/).pop() : "sintetizado";
+      linha.append(lig,
+        botao("Ouvir", ()=>ouvirSom(som), true),
+        botao("Usar meu arquivo…", ()=>escolherSom(som), false));
+      if(caminho) linha.append(botao("Voltar ao sintetizado", ()=>limparSom(som), false));
+      linha.append(arq);
+      box.appendChild(linha);
+    });
+  }
+
+  async function ouvirSom(som){
+    const out = document.getElementById("icqOut");
+    try{ await invoke("tocar_som_teste", {som}); out.textContent = ""; }
+    catch(e){ out.textContent = "✕ "+((e&&e.message)||e); }
+  }
+  async function escolherSom(som){
+    const out = document.getElementById("icqOut");
+    try{
+      await salvarPainel(); // não perde o que está em edição
+      const r = await invoke("escolher_som_icq", {som});
+      if(r.cancelado) return;
+      S = ZLSyncInPlace(S, await carregarPainel());
+      out.textContent = "✔ “"+r.arquivo+"” será usado. Clique em Ouvir para conferir.";
+      renderTemas();
+    }catch(e){ out.textContent = "✕ "+((e&&e.message)||e); }
+  }
+  async function limparSom(som){
+    const out = document.getElementById("icqOut");
+    try{
+      await invoke("limpar_som_icq", {som});
+      S = ZLSyncInPlace(S, await carregarPainel());
+      out.textContent = "✔ voltou ao som sintetizado.";
+      renderTemas();
+    }catch(e){ out.textContent = "✕ "+((e&&e.message)||e); }
+  }
+
+  document.querySelectorAll("#temaModos button").forEach(b => b.onclick = ()=>{
+    S.theme = S.theme || {}; S.theme.modo = b.dataset.modo; renderTemas();
+  });
+  document.getElementById("icqVolume").addEventListener("input", e=>{
+    S.theme = S.theme || {}; S.theme.icq = S.theme.icq || {};
+    S.theme.icq.volume = Number(e.target.value) / 100;
+    document.getElementById("icqVolumeVal").textContent = e.target.value + "%";
+  });
+
   function renderCustom(){
+    renderTemas();
     const sw = document.getElementById("swatches");
     sw.innerHTML="";
     const accent = (S.theme&&S.theme.accent)||"#22d3aa";
@@ -1475,8 +1698,15 @@
     },
     gemini:{
       label:"Google Gemini", keyField:"geminiKey", needsKey:true, prefix:"AIza…",
-      onde:'Chave no <code>Google AI Studio</code>. OAuth só pela via pesada do Google Cloud/Vertex — aqui é chave.',
+      onde:'Chave <b>grátis</b> do <code>Google AI Studio</code> — use o botão abaixo para gerar a sua.',
       models:["gemini-2.0-flash","gemini-2.5-flash","gemini-2.5-pro"]
+    },
+    chatgpt:{
+      label:"ChatGPT (sua conta)", keyField:"chatgptRefreshToken", needsKey:true, semCampoDeChave:true, prefix:"",
+      onde:'Usa a cota do seu plano <b>Plus ou Pro</b> pelo login oficial da OpenAI — sem chave de API.',
+      // Sem sugestões fixas: os modelos dependem da conta. O login escolhe um
+      // do catálogo dela, e "Buscar modelos" lista os demais.
+      models:[], listaModelos:true, usaVisao:true
     },
     openrouter:{
       label:"OpenRouter", keyField:"openrouterKey", needsKey:true, prefix:"sk-or-v1-…",
@@ -1523,11 +1753,16 @@
   function renderIA(){
     const id = provAtual(), P = PROVIDERS[id];
     S.aiProvider = id;                       // torna explícito o que o Rust já assumia
-    S.aiModel = S.aiModel || P.models[0];
+    S.aiModel = S.aiModel || P.models[0] || "";
     document.getElementById("aiProvider").value = id;
     document.getElementById("aiProviderHint").innerHTML = P.onde;
 
     document.getElementById("aiOauthField").style.display  = (id==="openrouter") ? "" : "none";
+    document.getElementById("chatgptField").style.display  = (id==="chatgpt") ? "" : "none";
+    document.getElementById("geminiField").style.display   = (id==="gemini") ? "" : "none";
+    document.getElementById("aiKeyField").style.display    = P.semCampoDeChave ? "none" : "";
+    document.getElementById("aiForgetBtn").style.display   = P.semCampoDeChave ? "none" : "";
+    if(id==="chatgpt") renderChatgpt();
     document.getElementById("aiBaseUrlField").style.display= USA_BASE_URL[id] ? "" : "none";
     // O OmniRoute tem porta de fábrica: o campo já nasce preenchido (e editável).
     if(USA_BASE_URL[id] && !S.aiBaseUrl && P.baseUrlPadrao) S.aiBaseUrl = P.baseUrlPadrao;
@@ -1544,16 +1779,19 @@
       "a janela do WhatsApp nunca a enxerga. Deixe em branco para manter a chave já salva.";
 
     encherModelos(P.models);
-    document.getElementById("aiModel").value = S.aiModel || P.models[0];
-    document.getElementById("aiModelHint").textContent =
-      "Sugestões para "+P.label+": "+P.models.join(" · ");
+    document.getElementById("aiModel").value = S.aiModel || P.models[0] || "";
+    document.getElementById("aiModelHint").textContent = P.models.length
+      ? "Sugestões para "+P.label+": "+P.models.join(" · ")
+      : "Os modelos dependem da sua conta — use “Buscar modelos”.";
     document.getElementById("aiModelsBtn").style.display = P.listaModelos ? "" : "none";
 
     // Modelo de imagem. `visaoPadrao` só existe onde sabemos que id concreto
     // funciona (OmniRoute); nos outros o campo aparece vazio, para preencher.
-    document.getElementById("aiVisionField").style.display = P.usaVisao ? "" : "none";
-    if(P.usaVisao && !S.aiVisionModel && P.visaoPadrao) S.aiVisionModel = P.visaoPadrao;
-    document.getElementById("aiVisionModel").value = P.usaVisao ? (S.aiVisionModel||"") : "";
+    // Visível para todos: "mesmo modelo do texto" é o padrão, mas qualquer
+    // provedor pode precisar de outro para imagem. `visaoPadrao` só existe onde
+    // sabemos qual id concreto funciona (OmniRoute, cujo `auto/*` descarta imagem).
+    if(!S.aiVisionModel && P.visaoPadrao) S.aiVisionModel = P.visaoPadrao;
+    renderVisao();
 
     document.getElementById("aiTone").value = S.aiTone||"";
     document.getElementById("iaTraduzirPara").value = (S.ia && S.ia.traduzirPara) || "";
@@ -1569,11 +1807,46 @@
   }
 
   // Os ids vêm da rede: nada de innerHTML com interpolação.
+  let catalogoAtual = [];
   function encherModelos(ids){
+    catalogoAtual = ids.slice();
     const dl = document.getElementById("aiModelSug");
     dl.textContent = "";
     ids.forEach(m=>{ const o=document.createElement("option"); o.value=m; dl.appendChild(o); });
+    renderVisao();
   }
+
+  /* Modelo para imagem: "mesmo do texto" (vazio no settings), um do catálogo
+     ou "outro" digitado. Vazio = o Rust usa o modelo de texto. */
+  const VISAO_OUTRO = "__outro__";
+  function renderVisao(){
+    const sel = document.getElementById("aiVisionSel"), campo = document.getElementById("aiVisionModel");
+    if(!sel) return;
+    const texto = S.aiModel || "";
+    const atual = S.aiVisionModel || "";
+    sel.textContent = "";
+    const opcao = (valor, rotulo) => { const o = document.createElement("option"); o.value = valor; o.textContent = rotulo; sel.appendChild(o); };
+    opcao("", "Mesmo modelo do texto"+(texto ? " ("+texto+")" : "")+
+      (texto.startsWith("auto/") ? " — não serve: apelido auto/* descarta imagem" : ""));
+    [...new Set(catalogoAtual)].filter(m => m !== texto).forEach(m => opcao(m, m));
+    opcao(VISAO_OUTRO, "Outro — digitar o nome…");
+    const noCatalogo = !atual || catalogoAtual.includes(atual);
+    sel.value = !atual ? "" : (noCatalogo && atual !== texto ? atual : (atual === texto ? "" : VISAO_OUTRO));
+    campo.style.display = sel.value === VISAO_OUTRO ? "" : "none";
+    campo.value = sel.value === VISAO_OUTRO ? atual : "";
+  }
+  document.getElementById("aiVisionSel").addEventListener("change", e => {
+    const campo = document.getElementById("aiVisionModel");
+    if(e.target.value === VISAO_OUTRO){
+      campo.style.display = "";
+      S.aiVisionModel = campo.value.trim();
+      campo.focus();
+    }else{
+      campo.style.display = "none";
+      S.aiVisionModel = e.target.value;
+    }
+    marcarAiPendente();
+  });
 
   // N3 — pergunta o catálogo ao provedor (GET /v1/models). Falhou? o campo
   // continua livre e as sugestões de fábrica ficam: a tela NUNCA trava.
@@ -1586,9 +1859,16 @@
       if(salvar){ await salvarPainel(); aiPendente=false; }
       const ids = await invoke("ai_models");
       if(!ids || !ids.length) throw "lista vazia";
+      // Sem modelo escolhido (o ChatGPT não tem sugestão fixa): o primeiro da
+      // lista da conta, que vem na ordem recomendada pelo servidor.
+      if(!S.aiModel){
+        S.aiModel = ids[0];
+        document.getElementById("aiModel").value = ids[0];
+        marcarAiPendente();
+      }
       encherModelos(ids);
-      hint.textContent = ids.length+" modelos publicados por "+P.label+
-        " — clique no campo para ver a lista (ou digite outro nome).";
+      hint.textContent = ids.length+" modelos disponíveis em "+P.label+": "+ids.slice(0,12).join(" · ")+
+        (ids.length>12 ? " …" : "")+" — clique no campo para escolher (ou digite outro nome).";
     }catch(e){
       encherModelos(P.models);
       hint.textContent = silencioso
@@ -1626,7 +1906,10 @@
       : "";
     if(st.ready){
       el.innerHTML = `<b style="color:var(--accent)">conectado</b> — ${st.providerLabel} · modelo <code>${st.model}</code>`
-        + (st.keyTail ? ` · chave <code>${st.keyTail}</code>` : (st.needsKey ? "" : " · sem chave (endpoint local)"))
+        + (st.provider==="chatgpt"
+            // ChatGPT: a "chave" é o token do login — mostra a conta, nunca pedaço do token.
+            ? (st.account ? ` · conta <code>${String(st.account).replace(/[&<>"']/g, c=>"&#"+c.charCodeAt(0)+";")}</code>` : "")
+            : (st.keyTail ? ` · chave <code>${st.keyTail}</code>` : (st.needsKey ? "" : " · sem chave (endpoint local)")))
         + (st.baseUrl ? ` · <code>${st.baseUrl}</code>` : "")
         + visaoLinha(st) + pend;
     }else{
@@ -1997,6 +2280,8 @@
   bind("aiModel","aiModel");bind("aiBaseUrl","aiBaseUrl");bind("aiVisionModel","aiVisionModel");
   ["aiModel","aiBaseUrl","aiVisionModel"].forEach(id=>
     document.getElementById(id).addEventListener("input",marcarAiPendente));
+  // "Mesmo modelo do texto (X)" acompanha o modelo de texto enquanto se digita.
+  document.getElementById("aiModel").addEventListener("input", renderVisao);
 
   // Trocar de provedor troca também o modelo: "claude-haiku-…" não existe no
   // Gemini, e "gpt-4o-mini" não existe na Anthropic. O modelo que o usuário
@@ -2006,7 +2291,12 @@
     S.aiModels = S.aiModels||{};
     if(S.aiModel) S.aiModels[anterior] = S.aiModel;
     S.aiProvider = e.target.value;
-    S.aiModel = S.aiModels[S.aiProvider] || PROVIDERS[S.aiProvider].models[0];
+    S.aiModel = S.aiModels[S.aiProvider] || PROVIDERS[S.aiProvider].models[0] || "";
+    // Modelo de imagem também é por provedor: o `claude/…` do OmniRoute não
+    // existe no ChatGPT. Sem escolha salva, volta a "mesmo modelo do texto".
+    S.aiVisionModels = S.aiVisionModels||{};
+    S.aiVisionModels[anterior] = S.aiVisionModel || "";
+    S.aiVisionModel = S.aiVisionModels[S.aiProvider] || "";
     // Mesma ideia para a URL base: cada provedor lembra a sua, o OmniRoute cai
     // no padrão de fábrica e quem já tinha uma URL salva não a perde.
     S.aiBaseUrls = S.aiBaseUrls||{};
@@ -2050,6 +2340,48 @@
     }catch(e){
       out.textContent = "✕ "+e;                        // erro EXATO do provedor
     }finally{ btn.disabled=false; refreshAiStatus(); }
+  };
+
+  /* ChatGPT — login oficial ("Sign in with ChatGPT"). O Rust faz tudo:
+     navegador, 127.0.0.1, troca, tokens cifrados e o modelo da conta. */
+  function renderChatgpt(){
+    const st = document.getElementById("chatgptEstado");
+    const conectado = !!(S.chatgptEmail && S.chatgptRefreshToken);
+    st.textContent = conectado
+      ? "conectado como "+S.chatgptEmail+(S.chatgptPlanUsage===false ? " — uso do plano NÃO liberado" : "")
+      : "não conectado";
+    document.getElementById("chatgptSair").style.display = conectado ? "" : "none";
+    document.getElementById("chatgptEntrar").textContent = conectado ? "Entrar de novo" : "Entrar com ChatGPT";
+  }
+  document.getElementById("chatgptEntrar").onclick = async()=>{
+    const out = document.getElementById("chatgptOut"), btn = document.getElementById("chatgptEntrar");
+    btn.disabled = true;
+    out.textContent = "abrindo o navegador… entre na sua conta ChatGPT e autorize o ZapLite (até 3 min).";
+    try{
+      await salvarPainel(); aiPendente=false;   // não perde o que está em edição
+      const r = await invoke("ai_oauth_chatgpt");
+      S = ZLSyncInPlace(S, await carregarPainel());
+      out.textContent = r.plano
+        ? "✔ conectado como "+r.email+(r.model ? " · modelo "+r.model : " · escolha um modelo em “Buscar modelos”")
+        : "Conectado como "+r.email+", mas o uso do plano não foi liberado na autorização. "+
+          "Entre de novo e aceite o uso do plano, ou escolha outro provedor.";
+      renderIA();
+    }catch(e){ out.textContent = "✕ "+((e&&e.message)||e); }
+    finally{ btn.disabled = false; }
+  };
+  document.getElementById("chatgptSair").onclick = async()=>{
+    const out = document.getElementById("chatgptOut");
+    try{
+      await invoke("ai_chatgpt_sair");
+      S = ZLSyncInPlace(S, await carregarPainel());
+      out.textContent = "✔ desconectado. O token foi revogado na OpenAI e apagado desta máquina.";
+      renderIA();
+    }catch(e){ out.textContent = "✕ "+((e&&e.message)||e); }
+  };
+  document.getElementById("geminiObter").onclick = ()=>{
+    invoke("open_external", {url:"https://aistudio.google.com/apikey"})
+      .catch(e=>{ document.getElementById("aiTestOut").textContent = "✕ não consegui abrir o navegador: "+((e&&e.message)||e); });
+    document.getElementById("aiKey").focus();
   };
 
   document.getElementById("aiOauthBtn").onclick=async()=>{
@@ -2271,6 +2603,7 @@
     renderTarefas();
   };
   setInterval(function(){ if(document.visibilityState === "visible") renderTarefas(); }, 1500);
+  setInterval(function(){ if(document.visibilityState === "visible") renderMcp(); }, 20000);
 
   /* Claude Desktop (MCP): estado do arquivo local, importação do celular,
      registro no claude_desktop_config.json e apagar tudo. */
@@ -2282,7 +2615,48 @@
       const ligado = !!(S.modules && S.modules.localArchive);
       st.textContent = s.conversas+" conversa(s), "+s.mensagens+" mensagem(ns)"+(s.bytes ? " · "+fmtBytes(s.bytes) : "")+
         " · captura pela tela: "+(ligado ? "LIGADA" : "desligada (módulo 35, em MÓDULOS)");
+      renderFaltam(s.lista || []);
     }catch(e){ st.textContent = "não consegui ler o arquivo local: "+((e&&e.message)||e); }
+  }
+
+  /* Cruza as conversas RECENTES (as que a lista do WhatsApp mostra; a página
+     as informa pelo módulo de notificações) com as que já estão no arquivo.
+     Casa por id e, para conversa só importada do celular, por nome. */
+  async function renderFaltam(noArquivo){
+    const el = document.getElementById("mcpFaltam");
+    let recentes = [];
+    try{ recentes = (await invoke("list_chats")) || []; }catch(_){ }
+    if(!recentes.length){
+      el.textContent = "Ainda não sei quais conversas você tem: isso vem do módulo de notificações "+
+        "(31, em MÓDULOS), com o WhatsApp aberto. Ligue-o e volte aqui em alguns segundos.";
+      return;
+    }
+    const ids = new Set(noArquivo.map(c=>c.id).filter(Boolean));
+    const nomes = new Set(noArquivo.map(c=>String(c.nome||"").trim().toLowerCase()));
+    const faltam = recentes.filter(c => !ids.has(c.id) && !nomes.has(String(c.name||"").trim().toLowerCase()));
+    el.textContent = "";
+    if(!faltam.length){
+      el.textContent = "✔ As "+recentes.length+" conversas recentes da sua lista já estão no arquivo.";
+      return;
+    }
+    const topo = document.createElement("div");
+    topo.textContent = faltam.length+" de "+recentes.length+" conversas recentes ainda não estão no arquivo. "+
+      "Com o módulo 35 ligado, basta abrir cada uma uma vez no WhatsApp — dali em diante ela se atualiza sozinha. "+
+      "Para o histórico antigo, importe a exportação do celular acima.";
+    el.appendChild(topo);
+    const ul = document.createElement("ul");
+    ul.style.cssText = "margin:8px 0 0 18px;padding:0;columns:2";
+    faltam.slice(0, 60).forEach(c=>{
+      const li = document.createElement("li");
+      li.textContent = (c.name || c.id) + (c.group ? " (grupo)" : "");
+      ul.appendChild(li);
+    });
+    el.appendChild(ul);
+    if(faltam.length > 60){
+      const mais = document.createElement("div");
+      mais.textContent = "… e mais "+(faltam.length-60)+".";
+      el.appendChild(mais);
+    }
   }
   document.getElementById("mcpConfigurar").onclick = async function(){
     const out = document.getElementById("mcpOut");

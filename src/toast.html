@@ -191,6 +191,60 @@
   .acts button.on:hover{background:var(--accent);color:#04120e}
   /* recusa do teto de fixados: pisca em vermelho e explica no title */
   .acts button.nope{border-color:#f43f5e;color:#f43f5e}
+
+  /* ==== TEMAS DO ZAPLITE — o toast acompanha o tema do WhatsApp ===========
+     Só cor, fonte, borda e efeito. NUNCA tamanho ou padding: cada estilo tem
+     a janela medida em `size_for()` (notify.rs) e não pode estourar.
+     `body.claro`/`body.escuro` já vêm resolvidos pelo script (no automático,
+     pelo claro/escuro do Windows). */
+  body[class*="tema-"] .x{color:var(--t-suave)}
+  body[class*="tema-"] .toast{background:var(--t-fundo)!important;color:var(--t-texto);
+    border-color:var(--t-borda)!important;font-family:var(--t-fonte)}
+  body[class*="tema-"] .when, body[class*="tema-"] .pin{color:var(--t-suave)}
+  body[class*="tema-"] .msg{color:var(--t-msg)!important}
+  body[class*="tema-"] .acts button{color:var(--t-texto);border-color:var(--t-borda);background:transparent}
+
+  /* Vidro Líquido */
+  body.tema-vidro{--t-fonte:"Segoe UI Variable Text","Segoe UI",sans-serif}
+  body.tema-vidro.escuro{--t-texto:#f3f4ff;--t-msg:rgba(225,228,255,.78);--t-suave:rgba(225,228,255,.6);--t-borda:rgba(255,255,255,.2);
+    --t-fundo:radial-gradient(120% 140% at 0% 0%,color-mix(in srgb,var(--accent) 38%,transparent),transparent 60%),
+              radial-gradient(120% 140% at 100% 100%,rgba(0,200,255,.25),transparent 60%),rgba(16,18,34,.94)}
+  body.tema-vidro.claro{--t-texto:#1b1d33;--t-msg:rgba(27,29,51,.78);--t-suave:rgba(27,29,51,.55);--t-borda:rgba(255,255,255,.95);
+    --t-fundo:radial-gradient(120% 140% at 0% 0%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 60%),
+              radial-gradient(120% 140% at 100% 100%,rgba(120,220,255,.35),transparent 60%),rgba(246,248,255,.96)}
+  body.tema-vidro .toast{border-radius:20px!important;
+    box-shadow:0 14px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.45)!important}
+
+  /* Brutal */
+  body.tema-brutal{--t-fonte:Bahnschrift,"Arial Narrow",sans-serif}
+  body.tema-brutal.claro{--t-fundo:#fffdf5;--t-texto:#111;--t-msg:#2b2b2b;--t-suave:#555;--t-borda:#111;--t-sombra:#111}
+  body.tema-brutal.escuro{--t-fundo:#1d1d1d;--t-texto:#f5f5f5;--t-msg:#d6d6d6;--t-suave:#a0a0a0;--t-borda:#f2f2f2;--t-sombra:#ffd23f}
+  body.tema-brutal .toast{border-width:3px!important;border-style:solid!important;border-radius:0!important;
+    box-shadow:inset -4px -4px 0 var(--t-sombra)!important}
+  body.tema-brutal .bar{background:#ffd23f}
+  body.tema-brutal .who{text-transform:uppercase;letter-spacing:.02em}
+
+  /* Terminal: CRT no escuro, LCD no claro */
+  body.tema-terminal{--t-fonte:"Cascadia Mono","Cascadia Code",Consolas,monospace}
+  body.tema-terminal.escuro{--t-fundo:#030603;--t-texto:#3dff86;--t-msg:#3dff86;--t-suave:#1fa354;--t-borda:rgba(61,255,134,.5)}
+  body.tema-terminal.claro{--t-fundo:#c4cfa1;--t-texto:#0f380f;--t-msg:#0f380f;--t-suave:#306230;--t-borda:rgba(15,56,15,.55)}
+  body.tema-terminal .toast{border-radius:2px!important}
+  body.tema-terminal .bar{background:var(--t-texto)}
+  body.tema-terminal .avatar{border-radius:2px}
+  body.tema-terminal.escuro .toast{text-shadow:0 0 6px rgba(61,255,134,.5)}
+  body.tema-terminal .toast::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px)}
+  body.tema-terminal.claro .toast::after{background:repeating-linear-gradient(90deg,rgba(15,56,15,.06) 0 1px,transparent 1px 3px)}
+
+  /* ICQ 2000: janelinha de recado do Windows 2000 (de dia e à noite) */
+  body.tema-icq{--t-fonte:Tahoma,Verdana,sans-serif}
+  body.tema-icq.claro{--t-fundo:#ffffe1;--t-texto:#000;--t-msg:#222;--t-suave:#555;--t-borda:#000}
+  body.tema-icq.escuro{--t-fundo:#3b3820;--t-texto:#f0f0e0;--t-msg:#e0e0c8;--t-suave:#b0b098;--t-borda:#5a5a5a}
+  body.tema-icq .toast{border-radius:0!important;border-width:1px!important;
+    box-shadow:inset 1px 1px 0 rgba(255,255,255,.6), inset -1px -1px 0 rgba(0,0,0,.35)!important}
+  body.tema-icq.claro .bar{background:linear-gradient(180deg,#0a246a,#a6caf0)}
+  body.tema-icq.escuro .bar{background:linear-gradient(180deg,#06122e,#2d5f9a)}
+  body.tema-icq .avatar{border-radius:2px}
 </style>
 </head>
 <body>
@@ -225,6 +279,28 @@ const id = (function(){
 })();
 
 /* --- sons sintetizados: nada de arquivos binários no instalador ---------- */
+/* "Oh-oh" do tema ICQ: a MESMA síntese de src-tauri/injection/src/sons.js —
+   duas sílabas descendentes com formantes de vogal. Síntese própria; não é a
+   gravação do ICQ. */
+function ohoh(ctx, master){
+  const silaba = (inicio, dur, f0a, f0b, formantes)=>{
+    const o = ctx.createOscillator(); o.type = "sawtooth";
+    o.frequency.setValueAtTime(f0a, inicio); o.frequency.linearRampToValueAtTime(f0b, inicio+dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(.0001, inicio); g.gain.exponentialRampToValueAtTime(.5, inicio+.025);
+    g.gain.setValueAtTime(.5, inicio+dur*.6); g.gain.exponentialRampToValueAtTime(.0001, inicio+dur);
+    formantes.forEach(([f, ganho])=>{
+      const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = f; bp.Q.value = 6;
+      const gf = ctx.createGain(); gf.gain.value = ganho;
+      o.connect(bp); bp.connect(gf); gf.connect(g);
+    });
+    g.connect(master); o.start(inicio); o.stop(inicio+dur+.02);
+  };
+  const t = ctx.currentTime + .01;
+  silaba(t, .17, 392, 370, [[520,1],[900,.55]]);
+  silaba(t+.21, .3, 311, 262, [[470,1],[820,.5]]);
+}
+
 function playTone(kind, volume){
   const AC = window.AudioContext || window.webkitAudioContext;
   if(!AC || kind === "nenhum") return;
@@ -241,6 +317,7 @@ function playTone(kind, volume){
     alerta: [[740,0,.13,"sawtooth"],[554,.14,.13,"sawtooth"],[740,.28,.18,"sawtooth"]],
     arpejo: [[523,0,.12,"triangle"],[659,.10,.12,"triangle"],[784,.20,.12,"triangle"],[1047,.30,.22,"triangle"]],
   };
+  if(kind === "ohoh"){ ohoh(ctx, master); setTimeout(()=>ctx.close(), 2000); return; }
   const score = SCORES[kind] || SCORES.toque;
   score.forEach(([f,t,d,w])=>{
     const o = ctx.createOscillator(), g = ctx.createGain();
@@ -297,6 +374,12 @@ async function dismiss(){
   const canto = ["superior-direita","superior-esquerda","inferior-esquerda"]
     .includes(t.position) ? t.position : "inferior-direita";
   document.body.className = (t.style || "card") + (canto.endsWith("esquerda") ? " esq" : "");
+  // Tema do ZapLite. No automático, segue o claro/escuro do Windows.
+  if(["vidro","brutal","terminal","icq"].includes(t.tema)){
+    const modo = (t.modo === "claro" || t.modo === "escuro") ? t.modo
+      : (matchMedia("(prefers-color-scheme: dark)").matches ? "escuro" : "claro");
+    document.body.classList.add("tema-" + t.tema, modo);
+  }
   document.documentElement.style.setProperty("--accent", t.accent || "#22d3aa");
   document.documentElement.style.setProperty("--op",
     (typeof t.opacity === "number" && t.opacity > 0)

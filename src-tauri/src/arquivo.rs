@@ -522,11 +522,18 @@ pub fn status(dir: &Path) -> Value {
     let bytes: u64 = fs::read_dir(dir)
         .map(|it| it.filter_map(|e| e.ok()?.metadata().ok()).map(|m| m.len()).sum())
         .unwrap_or(0);
+    // A lista vai para o Painel (janela LOCAL) cruzar com as conversas recentes
+    // e mostrar quais ainda faltam no arquivo. Nome e contagem, sem mensagem.
+    let lista: Vec<Value> = indice
+        .values()
+        .map(|c| json!({ "id": c.id, "nome": c.nome, "mensagens": c.mensagens, "ultima": c.ultima }))
+        .collect();
     json!({
         "conversas": indice.len(),
         "mensagens": indice.values().map(|c| c.mensagens).sum::<u64>(),
         "bytes": bytes,
         "pasta": dir.to_string_lossy(),
+        "lista": lista,
     })
 }
 
@@ -611,6 +618,11 @@ mod testes {
         assert_eq!(registrar_da_pagina(&dir, conv(), vec![pag("A", "13:41", "novo")]).unwrap(), 0);
         let indice = ler_indice(&dir);
         assert_eq!(indice.len(), 1, "importada e capturada são a mesma conversa");
+        // o Painel cruza esta lista com as conversas recentes: id e nome, sem mensagem
+        let st = status(&dir);
+        assert_eq!(st["lista"][0]["id"], "5511999998888@c.us");
+        assert_eq!(st["lista"][0]["nome"], "Fulano");
+        assert!(st["lista"][0].get("texto").is_none());
         let c = indice.values().next().unwrap();
         assert_eq!((c.id.as_str(), c.mensagens, c.ultima.as_str()), ("5511999998888@c.us", 5, "2026-08-15 13:42"));
         // estado em memória apagado junto com o disco

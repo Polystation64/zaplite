@@ -1,4 +1,4 @@
-import { bolhasVisiveis, ehApagada, ehDeSaida, idDaBolha, imagemDaBolha, textoDaBolha } from "../bolhas.js";
+import { analisarPrePlainText, bolhasVisiveis, ehApagada, ehDeSaida, idDaBolha, textoComMidia, tipoDeMidia } from "../bolhas.js";
 import { addAct, dropAct, ensureDock } from "../dock.js";
 import { nomeDaConversaAberta } from "../lista.js";
 import { salvarArquivo } from "../midia.js";
@@ -22,31 +22,11 @@ import { showPanel } from "../painel.js";
 
 const ID_ACT = "zl-exportar";
 
-/* PURA e testada (`bundle.test.js`). O WhatsApp põe em `data-pre-plain-text`
-   exatamente `"[13:38, 15/08/2026] Fulano: "`. É a única fonte estruturada de
-   autor e horário dentro da bolha — o resto é texto de tela. */
-export function analisarPrePlainText(pre) {
-  const s = String(pre || "").trim();
-  const m = s.match(/^\[([^\],]+),\s*([^\]]+)\]\s*(.*?):\s*$/);
-  if (!m) return { hora: "", data: "", autor: "" };
-  return { hora: m[1].trim(), data: m[2].trim(), autor: m[3].trim() };
-}
-
 /* PURA e testada. Uma linha do .txt, no formato do próprio WhatsApp. */
 export function linhaDeExportacao(msg) {
   const carimbo = msg.data || msg.hora ? "[" + [msg.hora, msg.data].filter(Boolean).join(", ") + "] " : "";
   const quem = msg.autor ? msg.autor + ": " : "";
   return carimbo + quem + (msg.texto || "");
-}
-
-export function tipoDeMidia(bolha) {
-  try {
-    if (imagemDaBolha(bolha)) return "imagem";
-    if (bolha.querySelector("video")) return "vídeo";
-    if (bolha.querySelector('audio,[data-testid="ptt-status"],[data-icon="ptt-status"]')) return "áudio";
-    if (bolha.querySelector('[data-icon="document"],[data-testid="document-thumb"]')) return "documento";
-  } catch (_) {}
-  return "";
 }
 
 /** UMA bolha lida como registro de mensagem, ou null quando não há nada
@@ -58,9 +38,8 @@ export function tipoDeMidia(bolha) {
 export function dadosDaBolha(bolha) {
   const pre = bolha.querySelector("[data-pre-plain-text]");
   const meta = analisarPrePlainText(pre && pre.getAttribute("data-pre-plain-text"));
-  let texto = (textoDaBolha(bolha) || "").trim();
   const midia = tipoDeMidia(bolha);
-  if (!texto && midia) texto = "<" + midia + ">";
+  let texto = textoComMidia(bolha);
   if (!texto && ehApagada(bolha)) texto = "<mensagem apagada>";
   if (!texto) return null;
   return {
@@ -182,3 +161,7 @@ export function registrarExportar() {
     },
   });
 }
+
+// Moraram aqui; agora em bolhas.js (seletores num lugar só). Reexportados
+// para quem já importava deste arquivo.
+export { analisarPrePlainText, tipoDeMidia };

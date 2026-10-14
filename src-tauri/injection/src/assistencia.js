@@ -1,4 +1,4 @@
-import { compositorDaConversa, bolhasVisiveis, chatIdDasBolhas, textoDaBolha, ehDeSaida } from "./bolhas.js";
+import { autorDaBolha, compositorDaConversa, bolhasVisiveis, chatIdDasBolhas, textoComMidia } from "./bolhas.js";
 import { chatIdAberto, nomeDaConversaAberta } from "./lista.js";
 
 /* De onde sai a identidade da conversa aberta, na ordem de preferência. A
@@ -45,8 +45,9 @@ export function inserirSugestao(alvo, texto) {
   }
 }
 export function mensagensParaSelecao(max = 60) {
+  const conversa = nomeDaConversaAberta();
   return bolhasVisiveis().slice(-max).map((b, index) => ({
-    id:index+1, texto:textoDaBolha(b), autor:ehDeSaida(b) ? "Voce" : "Contato"
+    id:index+1, texto:textoComMidia(b), autor:autorDaBolha(b, conversa)
   })).filter(m => m.texto);
 }
 export function seletorDeMensagens(mensagens, escolhidas = 10) {

@@ -1,5 +1,5 @@
 import { observarTela } from "../tela.js";
-import { chatIdAberto, chatIdDaLinha, linhasDaLista, nomeDaConversaAberta } from "../lista.js";
+import { cabecalhoDaConversa, chatIdAberto, chatIdDaLinha, linhasDaLista, nomeDaConversaAberta } from "../lista.js";
 import { addAct, dropAct, ensureDock } from "../dock.js";
 import { reg } from "../nucleo.js";
 import { showPanel } from "../painel.js";
@@ -43,7 +43,7 @@ async function recarregarIds() {
 
 /** O botão de nota no cabeçalho da conversa aberta. Aceso = existe nota. */
 function pintarCabecalho() {
-  const header = document.querySelector("#main header");
+  const header = cabecalhoDaConversa();
   if (!header) {
     const velho = document.getElementById("zl-nota-hdr");
     if (velho) velho.remove();
@@ -59,9 +59,13 @@ function pintarCabecalho() {
       e.stopPropagation();
       abrirEditor();
     };
-    (header.querySelector("div:last-child") || header).appendChild(b);
-  } else if (!header.contains(b)) {
-    (header.querySelector("div:last-child") || header).appendChild(b);
+    header.appendChild(b);
+  } else if (b.parentElement !== header) {
+    // `div:last-child` resolvia para o PRIMEIRO div que é último filho — um
+    // que mora dentro do bloco do nome — e o botão caía em cima do nome.
+    // Filho direto do cabeçalho (que é flex) = fim da linha, depois dos
+    // botões do WhatsApp.
+    header.appendChild(b);
   }
   const id = chatIdAberto();
   const tem = !!id && idsComNota.indexOf(id) >= 0;
