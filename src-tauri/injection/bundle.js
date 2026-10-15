@@ -3283,11 +3283,256 @@
   ::selection { background: #316ac5; color: #fff; }
 `;
   }
+  function moderno(c) {
+    return (modo) => {
+      const p = modo === "escuro" ? c.escuro : c.claro;
+      return `
+  ${fonte(c.fonte)}
+  ${vars({
+        fundo: "transparent",
+        superficie: p.superficie,
+        elevada: p.elevada,
+        destaque: p.destaque,
+        texto: p.texto,
+        textoSuave: p.suave,
+        acao: p.acao,
+        papelDeParede: "transparent",
+        caixa: p.caixa,
+        saida: p.saidaSolida,
+        entrada: p.entrada
+      })}
+  html body { background: ${p.fundoApp} !important; background-attachment: fixed !important; }
+  #main header, #side header { box-shadow: 0 1px 0 ${p.linha} !important; }
+  .zl-in, .zl-out {
+    border-radius: ${c.raio} !important;
+    border: 1px solid ${p.bordaBolha} !important;
+    box-shadow: ${p.sombra} !important;
+  }
+  .zl-out { background: ${p.saida} !important; }
+  .zl-out :is(span,div) { color: ${p.saidaTexto} !important; }
+  .zl-in { background: ${p.entrada} !important; }
+  .zl-in :is(span,div) { color: ${p.texto} !important; }
+  #main footer [contenteditable="true"] { border-radius: ${c.raio} !important; }
+  ${c.extra ? c.extra(modo === "escuro") : ""}
+  ::selection { background: ${p.selecao}; }
+`;
+    };
+  }
+  var UI_VAR = '"Segoe UI Variable Text","Segoe UI Variable Display","Segoe UI",system-ui,sans-serif';
+  var UI_DISPLAY = '"Segoe UI Variable Display","Segoe UI Variable Text","Segoe UI",system-ui,sans-serif';
+  var nebulosa = moderno({
+    fonte: UI_DISPLAY,
+    raio: "18px",
+    escuro: {
+      fundoApp: "radial-gradient(70vmax 60vmax at 15% 5%, rgba(110,80,220,.35), transparent 60%), radial-gradient(60vmax 50vmax at 95% 95%, rgba(40,90,200,.28), transparent 60%), #110c21",
+      superficie: "rgba(24,18,46,.88)",
+      elevada: "#241b42",
+      destaque: "#2f2556",
+      texto: "#ece8ff",
+      suave: "#a99cd6",
+      acao: "#b9a6ff",
+      caixa: "#221a3d",
+      entrada: "#221a40",
+      saidaSolida: "#5b4bd1",
+      saida: "linear-gradient(135deg, #5b4bd1, #8a5cf6)",
+      saidaTexto: "#ffffff",
+      bordaBolha: "rgba(185,166,255,.14)",
+      sombra: "0 8px 24px rgba(10,5,30,.45)",
+      linha: "rgba(185,166,255,.12)",
+      selecao: "rgba(138,92,246,.45)"
+    },
+    claro: {
+      fundoApp: "radial-gradient(70vmax 60vmax at 12% 5%, #e6dfff, transparent 60%), radial-gradient(60vmax 50vmax at 95% 95%, #dde8ff, transparent 60%), #f7f5fe",
+      superficie: "rgba(255,255,255,.86)",
+      elevada: "#ffffff",
+      destaque: "#ece8fb",
+      texto: "#221a3d",
+      suave: "#6b5f99",
+      acao: "#5b4bd1",
+      caixa: "#ffffff",
+      entrada: "#ffffff",
+      saidaSolida: "#6d5ce8",
+      saida: "linear-gradient(135deg, #6d5ce8, #9b6cf7)",
+      saidaTexto: "#ffffff",
+      bordaBolha: "rgba(91,75,209,.12)",
+      sombra: "0 4px 14px rgba(70,50,160,.10)",
+      linha: "rgba(91,75,209,.10)",
+      selecao: "rgba(109,92,232,.25)"
+    }
+  });
+  var oceano = moderno({
+    fonte: UI_VAR,
+    raio: "16px",
+    escuro: {
+      fundoApp: "linear-gradient(180deg, #0e1a28 0%, #0b2431 100%)",
+      superficie: "#13212f",
+      elevada: "#182a3b",
+      destaque: "#1d3346",
+      texto: "#f1faee",
+      suave: "#8fb8bd",
+      acao: "#7fd6d9",
+      caixa: "#182a3b",
+      entrada: "#182a3b",
+      saidaSolida: "#1f7a7c",
+      saida: "linear-gradient(135deg, #1b6f72, #2d8b8b)",
+      saidaTexto: "#f1faee",
+      bordaBolha: "rgba(168,218,220,.12)",
+      sombra: "0 6px 18px rgba(0,0,0,.35)",
+      linha: "rgba(168,218,220,.10)",
+      selecao: "rgba(45,139,139,.5)"
+    },
+    claro: {
+      fundoApp: "linear-gradient(180deg, #f1f9f8 0%, #e2f1f1 100%)",
+      superficie: "#ffffff",
+      elevada: "#ffffff",
+      destaque: "#e1f2f1",
+      texto: "#1a2332",
+      suave: "#4f6a73",
+      acao: "#1f7a7c",
+      caixa: "#ffffff",
+      entrada: "#ffffff",
+      saidaSolida: "#bfe9e6",
+      saida: "linear-gradient(135deg, #cdeeeb, #a8dadc)",
+      saidaTexto: "#10202a",
+      bordaBolha: "rgba(26,35,50,.06)",
+      sombra: "0 2px 10px rgba(26,35,50,.08)",
+      linha: "rgba(26,35,50,.08)",
+      selecao: "rgba(45,139,139,.25)"
+    }
+  });
+  var jardim = moderno({
+    fonte: UI_VAR,
+    raio: "14px",
+    extra: () => `#main header span[title], #pane-side span[title] {
+    font-family: "Sitka Heading","Sitka Text",Georgia,serif !important; letter-spacing: .005em; }`,
+    claro: {
+      fundoApp: "radial-gradient(60vmax 50vmax at 90% 0%, rgba(249,166,32,.10), transparent 60%), #f5f3ed",
+      superficie: "#fbfaf5",
+      elevada: "#ffffff",
+      destaque: "#ece8da",
+      texto: "#22302a",
+      suave: "#66705f",
+      acao: "#4a7c59",
+      caixa: "#ffffff",
+      entrada: "#ffffff",
+      saidaSolida: "#dcebd5",
+      saida: "linear-gradient(135deg, #e4f0dd, #d3e6cb)",
+      saidaTexto: "#1f2e24",
+      bordaBolha: "rgba(74,124,89,.16)",
+      sombra: "0 2px 0 rgba(74,124,89,.10)",
+      linha: "rgba(74,124,89,.15)",
+      selecao: "rgba(249,166,32,.35)"
+    },
+    escuro: {
+      fundoApp: "radial-gradient(60vmax 50vmax at 90% 0%, rgba(249,166,32,.08), transparent 60%), #121a15",
+      superficie: "#18221c",
+      elevada: "#1f2b24",
+      destaque: "#26352c",
+      texto: "#eef1e6",
+      suave: "#9fae98",
+      acao: "#f9a620",
+      caixa: "#1f2b24",
+      entrada: "#1f2b24",
+      saidaSolida: "#2f5a3c",
+      saida: "linear-gradient(135deg, #2f5a3c, #3b6b48)",
+      saidaTexto: "#f3f7ee",
+      bordaBolha: "rgba(249,166,32,.12)",
+      sombra: "0 4px 14px rgba(0,0,0,.35)",
+      linha: "rgba(255,255,255,.06)",
+      selecao: "rgba(249,166,32,.35)"
+    }
+  });
+  var entardecer = moderno({
+    fonte: UI_DISPLAY,
+    raio: "20px",
+    claro: {
+      fundoApp: "linear-gradient(160deg, #fff6ee 0%, #ffeadd 55%, #fde0cf 100%)",
+      superficie: "rgba(255,255,255,.82)",
+      elevada: "#ffffff",
+      destaque: "#ffe3d1",
+      texto: "#2a2230",
+      suave: "#7a6470",
+      acao: "#d1553a",
+      caixa: "#ffffff",
+      entrada: "#ffffff",
+      saidaSolida: "#ee8a5c",
+      saida: "linear-gradient(135deg, #f4a261, #e76f51)",
+      saidaTexto: "#ffffff",
+      bordaBolha: "rgba(231,111,81,.15)",
+      sombra: "0 6px 16px rgba(231,111,81,.15)",
+      linha: "rgba(231,111,81,.15)",
+      selecao: "rgba(244,162,97,.4)"
+    },
+    escuro: {
+      fundoApp: "linear-gradient(160deg, #1c2430 0%, #2a1f2e 55%, #3a2230 100%)",
+      superficie: "rgba(28,33,44,.88)",
+      elevada: "#262c3a",
+      destaque: "#2f3445",
+      texto: "#fbeee6",
+      suave: "#c4a9a0",
+      acao: "#f4a261",
+      caixa: "#262c3a",
+      entrada: "#262c3a",
+      saidaSolida: "#d85a5d",
+      saida: "linear-gradient(135deg, #e76f51, #c2456b)",
+      saidaTexto: "#ffffff",
+      bordaBolha: "rgba(244,162,97,.14)",
+      sombra: "0 6px 18px rgba(0,0,0,.4)",
+      linha: "rgba(244,162,97,.12)",
+      selecao: "rgba(231,111,81,.45)"
+    }
+  });
+  var minimal = moderno({
+    fonte: UI_VAR,
+    raio: "22px",
+    extra: () => `#app { letter-spacing: -.005em; }`,
+    claro: {
+      fundoApp: "#ffffff",
+      superficie: "#ffffff",
+      elevada: "#ffffff",
+      destaque: "#f2f2f2",
+      texto: "#111111",
+      suave: "#6b6b6b",
+      acao: "#111111",
+      caixa: "#f4f4f4",
+      entrada: "#f2f2f2",
+      saidaSolida: "#111111",
+      saida: "#111111",
+      saidaTexto: "#ffffff",
+      bordaBolha: "transparent",
+      sombra: "none",
+      linha: "#ececec",
+      selecao: "rgba(17,17,17,.18)"
+    },
+    escuro: {
+      fundoApp: "#000000",
+      superficie: "#0a0a0a",
+      elevada: "#141414",
+      destaque: "#1c1c1e",
+      texto: "#f5f5f7",
+      suave: "#8e8e93",
+      acao: "#f5f5f7",
+      caixa: "#1c1c1e",
+      entrada: "#1c1c1e",
+      saidaSolida: "#f5f5f7",
+      saida: "#f5f5f7",
+      saidaTexto: "#000000",
+      bordaBolha: "transparent",
+      sombra: "none",
+      linha: "#1f1f1f",
+      selecao: "rgba(255,255,255,.25)"
+    }
+  });
   var TEMAS = {
     vidro: { nome: "Vidro L\xEDquido", css: vidro },
     brutal: { nome: "Brutal", css: brutal },
     terminal: { nome: "Terminal", css: terminal },
-    icq: { nome: "ICQ 2000", css: icq }
+    icq: { nome: "ICQ 2000", css: icq },
+    nebulosa: { nome: "Nebulosa", css: nebulosa },
+    oceano: { nome: "Oceano", css: oceano },
+    jardim: { nome: "Jardim", css: jardim },
+    entardecer: { nome: "Entardecer", css: entardecer },
+    minimal: { nome: "Minimal", css: minimal }
   };
   function modoEfetivo(escolha, whatsappEscuro) {
     if (escolha === "claro" || escolha === "escuro") return escolha;

@@ -906,7 +906,7 @@ fn fechar(app: &AppHandle, id: &str) {
 }
 
 /// Chamado pelo bundle.js quando chega uma mensagem nova.
-const TEMAS_DE_TOAST: &[&str] = &["vidro", "brutal", "terminal", "icq"];
+const TEMAS_DE_TOAST: &[&str] = &["vidro", "brutal", "terminal", "icq", "nebulosa", "oceano", "jardim", "entardecer", "minimal"];
 
 /// Tema e som do toast segundo o tema do ZapLite. PURA e testada.
 ///

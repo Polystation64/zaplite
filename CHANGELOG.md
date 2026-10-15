@@ -17,6 +17,12 @@ Regras, para o aviso nunca mentir:
 
 <!-- Escreva a versão nova AQUI EM CIMA, logo abaixo desta linha. -->
 
+## 0.1.9
+
+Cinco temas novos, mais modernos.
+
+* **Nebulosa** (índigo e lavanda), **Oceano** (azul-marinho e verde-azulado), **Jardim** (creme e verde, com nomes em serifa), **Entardecer** (coral e laranja) e **Minimal** (monocromático). Cada um tem versão clara e escura e vale também para as janelas de notificação.
+
 ## 0.1.8
 
 IA sem chave de API.

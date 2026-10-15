@@ -245,6 +245,29 @@
   body.tema-icq.claro .bar{background:linear-gradient(180deg,#0a246a,#a6caf0)}
   body.tema-icq.escuro .bar{background:linear-gradient(180deg,#06122e,#2d5f9a)}
   body.tema-icq .avatar{border-radius:2px}
+
+  /* Temas modernos: paleta por modo (as mesmas de temas.js) + canto. */
+  body.tema-nebulosa,body.tema-oceano,body.tema-jardim,body.tema-entardecer,body.tema-minimal{
+    --t-fonte:"Segoe UI Variable Display","Segoe UI",sans-serif}
+  body.tema-nebulosa.escuro{--t-fundo:radial-gradient(120% 140% at 0% 0%,rgba(110,80,220,.4),transparent 60%),#16102b;--t-texto:#ece8ff;--t-msg:#cfc6f2;--t-suave:#a99cd6;--t-borda:rgba(185,166,255,.18)}
+  body.tema-nebulosa.claro{--t-fundo:radial-gradient(120% 140% at 0% 0%,#e6dfff,transparent 60%),#fbfaff;--t-texto:#221a3d;--t-msg:#3d3466;--t-suave:#6b5f99;--t-borda:rgba(91,75,209,.16)}
+  body.tema-oceano.escuro{--t-fundo:linear-gradient(180deg,#132232,#0d2735);--t-texto:#f1faee;--t-msg:#cfe6e6;--t-suave:#8fb8bd;--t-borda:rgba(168,218,220,.16)}
+  body.tema-oceano.claro{--t-fundo:linear-gradient(180deg,#ffffff,#eef8f7);--t-texto:#1a2332;--t-msg:#33495a;--t-suave:#4f6a73;--t-borda:rgba(26,35,50,.10)}
+  body.tema-jardim.claro{--t-fundo:#fbfaf5;--t-texto:#22302a;--t-msg:#3a4a3f;--t-suave:#66705f;--t-borda:rgba(74,124,89,.25)}
+  body.tema-jardim.escuro{--t-fundo:#18221c;--t-texto:#eef1e6;--t-msg:#cdd6c6;--t-suave:#9fae98;--t-borda:rgba(249,166,32,.2)}
+  body.tema-jardim .who{font-family:"Sitka Heading","Sitka Text",Georgia,serif}
+  body.tema-entardecer.claro{--t-fundo:linear-gradient(160deg,#fff6ee,#ffe6d6);--t-texto:#2a2230;--t-msg:#4a3a44;--t-suave:#7a6470;--t-borda:rgba(231,111,81,.25)}
+  body.tema-entardecer.escuro{--t-fundo:linear-gradient(160deg,#222a37,#33212f);--t-texto:#fbeee6;--t-msg:#e6d0c6;--t-suave:#c4a9a0;--t-borda:rgba(244,162,97,.2)}
+  body.tema-minimal.claro{--t-fundo:#ffffff;--t-texto:#111;--t-msg:#333;--t-suave:#6b6b6b;--t-borda:#e6e6e6}
+  body.tema-minimal.escuro{--t-fundo:#0a0a0a;--t-texto:#f5f5f7;--t-msg:#c7c7cc;--t-suave:#8e8e93;--t-borda:#222}
+  body.tema-nebulosa .toast,body.tema-oceano .toast,body.tema-entardecer .toast{border-radius:18px!important}
+  body.tema-jardim .toast{border-radius:14px!important}
+  body.tema-minimal .toast{border-radius:22px!important;box-shadow:0 10px 30px rgba(0,0,0,.18)!important}
+  body.tema-nebulosa .bar{background:linear-gradient(180deg,#5b4bd1,#8a5cf6)}
+  body.tema-oceano .bar{background:linear-gradient(180deg,#1b6f72,#2d8b8b)}
+  body.tema-jardim .bar{background:linear-gradient(180deg,#4a7c59,#f9a620)}
+  body.tema-entardecer .bar{background:linear-gradient(180deg,#f4a261,#e76f51)}
+  body.tema-minimal .bar{background:var(--t-texto)}
 </style>
 </head>
 <body>
@@ -375,7 +398,7 @@ async function dismiss(){
     .includes(t.position) ? t.position : "inferior-direita";
   document.body.className = (t.style || "card") + (canto.endsWith("esquerda") ? " esq" : "");
   // Tema do ZapLite. No automático, segue o claro/escuro do Windows.
-  if(["vidro","brutal","terminal","icq"].includes(t.tema)){
+  if(["vidro","brutal","terminal","icq","nebulosa","oceano","jardim","entardecer","minimal"].includes(t.tema)){
     const modo = (t.modo === "claro" || t.modo === "escuro") ? t.modo
       : (matchMedia("(prefers-color-scheme: dark)").matches ? "escuro" : "claro");
     document.body.classList.add("tema-" + t.tema, modo);
