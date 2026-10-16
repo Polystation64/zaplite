@@ -221,6 +221,24 @@ teste("foto sem legenda vira [imagem] e o autor é o nome salvo", () => {
   assert.strictEqual(autor(true, pre("[17:00, 13/10/2026] Alexandre: "), "Gi"), "Você");
 });
 
+/* Relato real: "digitando…" virava notificação. */
+teste("prévia de digitando/gravando não é mensagem", () => {
+  const f = new Function(extrair("previaTransitoria") + "; return previaTransitoria;")();
+  for (const t of ["digitando…", "Digitando...", "Ana está digitando…", "gravando áudio…", "typing…", "João is typing...", "escribiendo…"])
+    assert.ok(f(t), t);
+  for (const t of ["vou digitando aos poucos e te mando", "ok", "gravando amanhã o vídeo, te aviso", ""])
+    assert.ok(!f(t), t);
+});
+
+/* Relato real: abrir conversa não lida tocava o alerta a cada bolha antiga. */
+teste("horário da mensagem sai do data-pre-plain-text", () => {
+  const f = new Function(extrair("momentoDaMensagem") + "; return momentoDaMensagem;")();
+  assert.strictEqual(f("13:38", "15/08/2026"), new Date(2026, 7, 15, 13, 38).getTime());
+  assert.strictEqual(f("9:05", "1/2/26"), new Date(2026, 1, 1, 9, 5).getTime());
+  assert.strictEqual(f("", "15/08/2026"), null);
+  assert.strictEqual(f("13:38", "ontem"), null);
+});
+
 /* Cada tema tem claro e escuro; o automático segue o modo do WhatsApp. */
 teste("modo do tema: escolha do usuário vence, automático segue o WhatsApp", () => {
   const f = new Function(extrair("modoEfetivo") + "; return modoEfetivo;")();

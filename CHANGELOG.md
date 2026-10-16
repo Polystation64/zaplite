@@ -17,6 +17,14 @@ Regras, para o aviso nunca mentir:
 
 <!-- Escreva a versão nova AQUI EM CIMA, logo abaixo desta linha. -->
 
+## 0.1.10
+
+Correções nas notificações.
+
+* Abrir uma conversa que você ainda não leu não toca mais o alerta: o som é só para a mensagem que chega na hora.
+* "Digitando…" e "gravando áudio…" não viram mais notificação, e quando a digitação termina a mesma mensagem não é avisada de novo.
+* Em grupos silenciados, ser mencionado avisa a menção, mas não transforma as mensagens seguintes em notificações.
+
 ## 0.1.9
 
 Cinco temas novos, mais modernos.

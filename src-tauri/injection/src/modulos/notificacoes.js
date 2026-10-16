@@ -15,6 +15,13 @@ import { showPanel } from "../painel.js";
 import { invoke } from "../ponte.js";
 
 /* 31. Notificações próprias com regras por contato --------------------- */
+/** Prévia que é ESTADO da conversa, não mensagem: "digitando…",
+ * "Fulano está digitando…", "gravando áudio…" (pt/en/es). PURA e testada. */
+export function previaTransitoria(t) {
+  const s = String(t || "").trim().toLowerCase();
+  return /^(?:.{1,60}\s)?(?:está\s+)?(?:digitando|gravando(?:\s+áudio)?|is\s+typing|typing|is\s+recording(?:\s+audio)?|recording(?:\s+audio)?|escribiendo|grabando(?:\s+audio)?)\s*(?:…|\.\.\.)?$/.test(s);
+}
+
 export function registrarNotificacoes() {
   reg({
     id: "smartNotify",
@@ -208,7 +215,14 @@ export function registrarNotificacoes() {
           lembrarMudo(chatId, false);
           return false;
         }
-        return self._mudos.get(chatId) === true;
+        // Menção visível esconde o sino de silenciado (os dois disputam o
+        // mesmo lugar na linha). Sem memória de como o grupo era antes, a
+        // dúvida vai para o lado do silêncio: o aviso da MENÇÃO sai do mesmo
+        // jeito (ele fura o silêncio por regra), e as mensagens seguintes de
+        // um grupo silenciado não viram aviso uma por uma (relato real).
+        const lembrado = self._mudos.get(chatId);
+        if (lembrado === undefined && mencaoDaLinha(row)) return true;
+        return lembrado === true;
       }
 
       // V3 — RELÓGIO da linha, quando ele existir em algum lugar ESTRUTURAL.
@@ -305,6 +319,10 @@ export function registrarNotificacoes() {
 
           const preview = previaDaLinha(row);
           if (!preview) continue;
+          // "digitando…", "gravando áudio…": estado passageiro, não mensagem.
+          // Sai ANTES de `_seen`: quando a digitação acaba e a prévia volta à
+          // mesma mensagem, nada mudou — e nada é notificado (relato real).
+          if (previaTransitoria(preview)) continue;
 
           if (self._seen.get(key) === preview) continue; // já notificado
           self._seen.set(key, preview);

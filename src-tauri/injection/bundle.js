@@ -3554,6 +3554,24 @@
     const m = /^\((\d+)\)/.exec(String(titulo || "").trim());
     return m ? Number(m[1]) : 0;
   }
+  function momentoDaMensagem(hora, data) {
+    const h = /^(\d{1,2}):(\d{2})/.exec(String(hora || "").trim());
+    const d = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(String(data || "").trim());
+    if (!h || !d) return null;
+    const ano = d[3].length === 2 ? 2e3 + Number(d[3]) : Number(d[3]);
+    const t = new Date(ano, Number(d[2]) - 1, Number(d[1]), Number(h[1]), Number(h[2])).getTime();
+    return Number.isFinite(t) ? t : null;
+  }
+  function chegouAgora(bolha, assentouEm) {
+    try {
+      const pre = bolha.querySelector("[data-pre-plain-text]");
+      const m = analisarPrePlainText(pre && pre.getAttribute("data-pre-plain-text"));
+      const t = momentoDaMensagem(m.hora, m.data);
+      if (t !== null) return Date.now() - t <= 9e4;
+    } catch (_) {
+    }
+    return Date.now() - assentouEm > 3e3;
+  }
   function marcarBolhas() {
     for (const b of bolhasVisiveis()) {
       const miolo = b.querySelector(BOLHA_MIOLO) || b;
@@ -3627,6 +3645,7 @@
         };
         const vistas = /* @__PURE__ */ new Set();
         let jidAnterior = null;
+        let assentouEm = Date.now();
         self._pararChegada = observarTela(() => {
           const bs = bolhasVisiveis();
           const ultima = bs[bs.length - 1];
@@ -3635,7 +3654,8 @@
           const jid = jidDoIdDeMensagem(id) || "?";
           const mesmaConversa = jidAnterior !== null && jid === jidAnterior;
           const semToast = !toastCuida() || document.hasFocus() && !document.hidden;
-          if (mesmaConversa && !vistas.has(id) && !ehDeSaida(ultima) && semToast) ohoh();
+          if (!mesmaConversa) assentouEm = Date.now();
+          if (mesmaConversa && !vistas.has(id) && !ehDeSaida(ultima) && semToast && chegouAgora(ultima, assentouEm)) ohoh();
           for (const b of bs) {
             const i = idDaBolha(b);
             if (i) vistas.add(i);
@@ -3880,6 +3900,10 @@
   }
 
   // src-tauri/injection/src/modulos/notificacoes.js
+  function previaTransitoria(t) {
+    const s = String(t || "").trim().toLowerCase();
+    return /^(?:.{1,60}\s)?(?:está\s+)?(?:digitando|gravando(?:\s+áudio)?|is\s+typing|typing|is\s+recording(?:\s+audio)?|recording(?:\s+audio)?|escribiendo|grabando(?:\s+audio)?)\s*(?:…|\.\.\.)?$/.test(s);
+  }
   function registrarNotificacoes() {
     reg({
       id: "smartNotify",
@@ -4005,7 +4029,9 @@
             lembrarMudo(chatId, false);
             return false;
           }
-          return self._mudos.get(chatId) === true;
+          const lembrado = self._mudos.get(chatId);
+          if (lembrado === void 0 && mencaoDaLinha(row)) return true;
+          return lembrado === true;
         }
         function relogioDaLinha(row) {
           try {
@@ -4059,6 +4085,7 @@
             }
             const preview = previaDaLinha(row);
             if (!preview) continue;
+            if (previaTransitoria(preview)) continue;
             if (self._seen.get(key) === preview) continue;
             self._seen.set(key, preview);
             if (!self._primed) continue;

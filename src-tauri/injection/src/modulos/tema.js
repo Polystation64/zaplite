@@ -1,4 +1,4 @@
-import { BOLHA_MIOLO, bolhasVisiveis, compositorDaConversa, ehDeSaida, idDaBolha, jidDoIdDeMensagem } from "../bolhas.js";
+import { analisarPrePlainText, BOLHA_MIOLO, bolhasVisiveis, compositorDaConversa, ehDeSaida, idDaBolha, jidDoIdDeMensagem } from "../bolhas.js";
 import { css, dropCss, reg, settings } from "../nucleo.js";
 import { carregarSonsPersonalizados, somBorracha, somOhOh, somTecla } from "../sons.js";
 import { observarTela } from "../tela.js";
@@ -22,6 +22,32 @@ function cfgIcq() {
 export function naoLidasDoTitulo(titulo) {
   const m = /^\((\d+)\)/.exec(String(titulo || "").trim());
   return m ? Number(m[1]) : 0;
+}
+
+/** Momento da mensagem a partir de "13:38" + "15/08/2026" (dd/mm/aaaa, o
+ * formato do `data-pre-plain-text` no WhatsApp em português). `null` se não
+ * der para ler. PURA e testada. */
+export function momentoDaMensagem(hora, data) {
+  const h = /^(\d{1,2}):(\d{2})/.exec(String(hora || "").trim());
+  const d = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(String(data || "").trim());
+  if (!h || !d) return null;
+  const ano = d[3].length === 2 ? 2000 + Number(d[3]) : Number(d[3]);
+  const t = new Date(ano, Number(d[2]) - 1, Number(d[1]), Number(h[1]), Number(h[2])).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+/** Chegou AGORA? Só mensagem com horário dos últimos 90 s. Abrir uma conversa
+ * não lida faz o WhatsApp descer desde "mensagens não lidas" até o fim — cada
+ * bolha que aparece embaixo parecia "chegada" e tocava o alerta (relato real).
+ * Sem horário legível (mídia sem legenda), só depois de a conversa assentar. */
+function chegouAgora(bolha, assentouEm) {
+  try {
+    const pre = bolha.querySelector("[data-pre-plain-text]");
+    const m = analisarPrePlainText(pre && pre.getAttribute("data-pre-plain-text"));
+    const t = momentoDaMensagem(m.hora, m.data);
+    if (t !== null) return Date.now() - t <= 90000;
+  } catch (_) {}
+  return Date.now() - assentouEm > 3000;
 }
 
 /** Marca a bolha desenhada com a direção — o CSS dos temas pinta por aqui. */
@@ -122,6 +148,7 @@ export function registrarTema() {
       // elas não são chegada. Trocar de conversa também não (outro jid).
       const vistas = new Set();
       let jidAnterior = null;
+      let assentouEm = Date.now();
       self._pararChegada = observarTela(() => {
         const bs = bolhasVisiveis();
         const ultima = bs[bs.length - 1];
@@ -130,7 +157,8 @@ export function registrarTema() {
         const jid = jidDoIdDeMensagem(id) || "?";
         const mesmaConversa = jidAnterior !== null && jid === jidAnterior;
         const semToast = !toastCuida() || (document.hasFocus() && !document.hidden);
-        if (mesmaConversa && !vistas.has(id) && !ehDeSaida(ultima) && semToast) ohoh();
+        if (!mesmaConversa) assentouEm = Date.now();
+        if (mesmaConversa && !vistas.has(id) && !ehDeSaida(ultima) && semToast && chegouAgora(ultima, assentouEm)) ohoh();
         for (const b of bs) {
           const i = idDaBolha(b);
           if (i) vistas.add(i);
