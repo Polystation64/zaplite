@@ -780,8 +780,8 @@ fn cabem(altura_util: f64, scale: f64, alturas: &[f64]) -> usize {
 /// duas pilhas se sobreporiam.
 fn restack(app: &AppHandle) {
     let state = app.state::<ToastState>();
-    let stack = state.stack.lock().unwrap().clone();
-    let data = state.data.lock().unwrap().clone();
+    let stack = state.stack.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let data = state.data.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let (area, scale) = area_util(app);
 
     // Do mais novo (colado no canto) para o mais antigo, por canto.
@@ -812,11 +812,11 @@ fn restack(app: &AppHandle) {
 /// mais deixar corpo da mensagem e avatar (até 300 KB) retidos para sempre.
 fn esquecer(app: &AppHandle, id: &str) {
     let state = app.state::<ToastState>();
-    state.data.lock().unwrap().remove(id);
-    state.stack.lock().unwrap().retain(|x| x != id);
+    state.data.lock().unwrap_or_else(|e| e.into_inner()).remove(id);
+    state.stack.lock().unwrap_or_else(|e| e.into_inner()).retain(|x| x != id);
     // N1 — sem isto, o conjunto de fixados viraria depósito de ids mortos e
     // ainda por cima gastaria a cota de `MAX_PINNED` com janelas que não existem.
-    state.pinned.lock().unwrap().remove(id);
+    state.pinned.lock().unwrap_or_else(|e| e.into_inner()).remove(id);
 }
 
 /// N1 — cabe mais um FIXADO nesta coluna? Duas guardas, e é aqui que mora a
@@ -856,9 +856,9 @@ fn abrir_espaco(app: &AppHandle, altura_nova: f64, canto_novo: &str) {
     loop {
         let (stack, data, fixos) = {
             let state = app.state::<ToastState>();
-            let s = state.stack.lock().unwrap().clone();
-            let d = state.data.lock().unwrap().clone();
-            let p = state.pinned.lock().unwrap().clone();
+            let s = state.stack.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            let d = state.data.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            let p = state.pinned.lock().unwrap_or_else(|e| e.into_inner()).clone();
             (s, d, p)
         };
         // Só a coluna do toast novo entra na conta de altura: fechar um toast
@@ -946,7 +946,7 @@ pub async fn show_toast(app: AppHandle, mut toast: ToastRequest) -> Result<(), S
     // só a subida de borda conta como menção. Sem isto, uma menção não lida
     // faria toda mensagem seguinte do grupo sair com cara de menção.
     toast.mention_mark = {
-        let mut mem = mencao_mem().lock().unwrap();
+        let mut mem = mencao_mem().lock().unwrap_or_else(|e| e.into_inner());
         registrar_mencao(&mut mem, &toast.chat_id, toast.mention_mark)
     };
     // W1: TODA a decisão mora em `decidir` — função pura, testada, sem cópia.
@@ -1001,8 +1001,8 @@ fn mostrar_resolvido(app: AppHandle, resolvido: Toast) -> Result<(), String> {
     // (O toast.html tolera um `get_toast` vazio nos primeiros ms e repete.)
     {
         let state = app.state::<ToastState>();
-        state.data.lock().unwrap().insert(id.clone(), resolvido);
-        state.stack.lock().unwrap().push(id.clone());
+        state.data.lock().unwrap_or_else(|e| e.into_inner()).insert(id.clone(), resolvido);
+        state.stack.lock().unwrap_or_else(|e| e.into_inner()).push(id.clone());
     }
 
     // A janela pode morrer por caminhos que não passam pelo `close_toast`.
@@ -1025,7 +1025,7 @@ fn mostrar_resolvido(app: AppHandle, resolvido: Toast) -> Result<(), String> {
 /// O toast.html pede seus próprios dados ao carregar.
 #[tauri::command]
 pub fn get_toast(app: AppHandle, id: String) -> Option<Toast> {
-    app.state::<ToastState>().data.lock().unwrap().get(&id).cloned()
+    app.state::<ToastState>().data.lock().unwrap_or_else(|e| e.into_inner()).get(&id).cloned()
 }
 
 /// Fecha um toast e reorganiza a pilha.
@@ -1054,7 +1054,7 @@ pub fn focus_chat(app: AppHandle, id: String, chat_id: String) -> Result<(), Str
             // pedido com `take_pending_chat` assim que sobe.
             {
                 let st = app.state::<ToastState>();
-                *st.pedido_chat.lock().unwrap() = Some((chat_id.clone(), Instant::now()));
+                *st.pedido_chat.lock().unwrap_or_else(|e| e.into_inner()) = Some((chat_id.clone(), Instant::now()));
             }
             // O bundle.js escuta este evento e procura a linha cujo id casa.
             let _ = main.emit("zaplite://open-chat", json!({ "chatId": chat_id }));
@@ -1074,7 +1074,7 @@ pub fn focus_chat(app: AppHandle, id: String, chat_id: String) -> Result<(), Str
 /// reinício, que é pior do que perdê-las.
 #[tauri::command]
 pub fn snooze_toast(app: AppHandle, id: String, minutes: u64) -> Result<(), String> {
-    let Some(mut resolvido) = app.state::<ToastState>().data.lock().unwrap().get(&id).cloned()
+    let Some(mut resolvido) = app.state::<ToastState>().data.lock().unwrap_or_else(|e| e.into_inner()).get(&id).cloned()
     else {
         return close_toast(app, id);
     };
@@ -1105,19 +1105,19 @@ pub fn pin_toast(app: AppHandle, id: String) -> Result<String, String> {
     let (area, scale) = area_util(&app);
     let state = app.state::<ToastState>();
 
-    if state.pinned.lock().unwrap().contains(&id) {
-        state.pinned.lock().unwrap().remove(&id);
+    if state.pinned.lock().unwrap_or_else(|e| e.into_inner()).contains(&id) {
+        state.pinned.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
         return Ok("solto".into());
     }
 
-    let data = state.data.lock().unwrap().clone();
+    let data = state.data.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let Some(t) = data.get(&id) else {
         return Err("toast desconhecido".into());
     };
     let canto = canto_valido(&t.position);
     let altura_nova = size_for(&t.style, t.size_pct).1;
 
-    let fixos = state.pinned.lock().unwrap().clone();
+    let fixos = state.pinned.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let no_canto: Vec<f64> = fixos
         .iter()
         .filter_map(|x| data.get(x))
@@ -1128,7 +1128,7 @@ pub fn pin_toast(app: AppHandle, id: String) -> Result<String, String> {
     if !pode_fixar(area.3, scale, &no_canto, altura_nova, fixos.len()) {
         return Ok("cheio".into());
     }
-    state.pinned.lock().unwrap().insert(id);
+    state.pinned.lock().unwrap_or_else(|e| e.into_inner()).insert(id);
     Ok("fixado".into())
 }
 
@@ -1154,7 +1154,7 @@ pub fn mute_chat(app: AppHandle, id: String, chat_id: String, name: String) -> R
 #[tauri::command]
 pub fn take_pending_chat(app: AppHandle) -> Option<String> {
     let st = app.state::<ToastState>();
-    let mut p = st.pedido_chat.lock().unwrap();
+    let mut p = st.pedido_chat.lock().unwrap_or_else(|e| e.into_inner());
     match p.take() {
         Some((chat_id, quando)) if quando.elapsed() <= PEDIDO_CHAT_TTL => Some(chat_id),
         _ => None,
@@ -1209,14 +1209,14 @@ pub fn report_chats(app: AppHandle, chats: Vec<ChatRef>) -> Result<(), String> {
     // lida). Ele nunca a LIGA: ligar aqui roubaria a subida de borda do toast
     // que chega junto com a menção, e a notificação de menção não sairia.
     {
-        let mut mem = mencao_mem().lock().unwrap();
+        let mut mem = mencao_mem().lock().unwrap_or_else(|e| e.into_inner());
         for c in &limpos {
             if !c.mention && !c.id.is_empty() {
                 mem.remove(&c.id);
             }
         }
     }
-    *app.state::<ChatList>().0.lock().unwrap() = limpos;
+    *app.state::<ChatList>().0.lock().unwrap_or_else(|e| e.into_inner()) = limpos;
     Ok(())
 }
 
@@ -1224,7 +1224,7 @@ pub fn report_chats(app: AppHandle, chats: Vec<ChatRef>) -> Result<(), String> {
 /// na capability dela — ela já tem a lista, é ela quem a produziu.
 #[tauri::command]
 pub fn list_chats(app: AppHandle) -> Vec<ChatRef> {
-    app.state::<ChatList>().0.lock().unwrap().clone()
+    app.state::<ChatList>().0.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 /// Fecha todos de uma vez. N1 — este caminho fecha os FIXADOS também, e é
@@ -1237,7 +1237,7 @@ pub fn close_all_toasts(app: AppHandle) -> Result<(), String> {
         let state = app.state::<ToastState>();
         // Bind explícito: sem isso o guard temporário do tail expression
         // sobrevive ao `state` e o borrow checker reclama.
-        let ids = state.stack.lock().unwrap().clone();
+        let ids = state.stack.lock().unwrap_or_else(|e| e.into_inner()).clone();
         ids
     };
     for id in ids {
@@ -1264,7 +1264,7 @@ pub fn close_all_toasts(app: AppHandle) -> Result<(), String> {
 pub fn fechar_toasts_por_recuperacao(app: &AppHandle) -> usize {
     let ids: Vec<String> = {
         let state = app.state::<ToastState>();
-        let ids = state.stack.lock().unwrap().clone();
+        let ids = state.stack.lock().unwrap_or_else(|e| e.into_inner()).clone();
         ids
     };
     let mut n = 0usize;
@@ -1298,9 +1298,9 @@ pub fn fechar_toasts_por_recuperacao(app: &AppHandle) -> usize {
     // O estado tem que ficar VAZIO: é ele que o teste vivo inspeciona.
     {
         let state = app.state::<ToastState>();
-        state.data.lock().unwrap().clear();
-        state.stack.lock().unwrap().clear();
-        state.pinned.lock().unwrap().clear();
+        state.data.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        state.stack.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        state.pinned.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
     n
 }
@@ -1341,8 +1341,8 @@ fn medir_linhas(app: &AppHandle) -> Vec<String> {
     let (area, _) = area_util(app);
     let (stack, data) = {
         let st = app.state::<ToastState>();
-        let s = st.stack.lock().unwrap().clone();
-        let d = st.data.lock().unwrap().clone();
+        let s = st.stack.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let d = st.data.lock().unwrap_or_else(|e| e.into_inner()).clone();
         (s, d)
     };
     let mut caixas: Vec<(String, f64, f64, f64, f64)> = Vec::new();
@@ -1510,7 +1510,7 @@ pub fn prova_janelas(app: AppHandle) {
             }
             dormir(600).await;
             let st = app.state::<ToastState>();
-            let ids = st.stack.lock().unwrap().clone();
+            let ids = st.stack.lock().unwrap_or_else(|e| e.into_inner()).clone();
             let janelas = app
                 .webview_windows()
                 .keys()
@@ -1532,7 +1532,7 @@ pub fn prova_janelas(app: AppHandle) {
         dormir(1500).await;
         clicar_no_toast(&app, "pv-fix", Some(0)); // 📌
         dormir(800).await;
-        let fixado_no_estado = app.state::<ToastState>().pinned.lock().unwrap().contains("pv-fix");
+        let fixado_no_estado = app.state::<ToastState>().pinned.lock().unwrap_or_else(|e| e.into_inner()).contains("pv-fix");
         diag(&format!(
             "N1 (b) apos clicar no 📌: vivo={} pinned={fixado_no_estado}",
             vivo("pv-fix")
@@ -1561,8 +1561,8 @@ pub fn prova_janelas(app: AppHandle) {
         /* --- (c) os botões NÃO abrem a conversa ---------------------------- */
         // `focus_chat` é o único caminho que grava `pedido_chat`. Se um botão
         // vazasse o clique para o corpo, o pedido apareceria aqui.
-        let pedido = || app.state::<ToastState>().pedido_chat.lock().unwrap().is_some();
-        *app.state::<ToastState>().pedido_chat.lock().unwrap() = None;
+        let pedido = || app.state::<ToastState>().pedido_chat.lock().unwrap_or_else(|e| e.into_inner()).is_some();
+        *app.state::<ToastState>().pedido_chat.lock().unwrap_or_else(|e| e.into_inner()) = None;
         let _ = mostrar_resolvido(
             app.clone(),
             toast_de_prova("pv-btn", "card", "inferior-direita", 100, 1.0, 600),
@@ -1592,7 +1592,7 @@ pub fn prova_janelas(app: AppHandle) {
         ));
 
         let _ = close_all_toasts(app.clone());
-        *app.state::<ToastState>().pedido_chat.lock().unwrap() = None;
+        *app.state::<ToastState>().pedido_chat.lock().unwrap_or_else(|e| e.into_inner()) = None;
         dormir(600).await;
         diag(&format!(
             "PROVA JANELA: fim — janelas toast-* restantes = {}",

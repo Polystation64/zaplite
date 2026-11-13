@@ -1,4 +1,4 @@
-import { analisarPrePlainText, BOLHA_MIOLO, bolhasVisiveis, compositorDaConversa, ehDeSaida, idDaBolha, jidDoIdDeMensagem } from "../bolhas.js";
+import { analisarPrePlainText, bolhasVisiveis, mioloPintado, compositorDaConversa, ehDeSaida, idDaBolha, jidDoIdDeMensagem } from "../bolhas.js";
 import { css, dropCss, reg, settings } from "../nucleo.js";
 import { carregarSonsPersonalizados, somBorracha, somOhOh, somTecla } from "../sons.js";
 import { observarTela } from "../tela.js";
@@ -53,8 +53,12 @@ function chegouAgora(bolha, assentouEm) {
 /** Marca a bolha desenhada com a direção — o CSS dos temas pinta por aqui. */
 function marcarBolhas() {
   for (const b of bolhasVisiveis()) {
-    const miolo = b.querySelector(BOLHA_MIOLO) || b;
+    const miolo = mioloPintado(b) || b;
     const saida = ehDeSaida(b);
+    // Marca antiga em outro nó da mesma bolha (o balão foi redesenhado).
+    b.querySelectorAll(".zl-in, .zl-out").forEach((el) => {
+      if (el !== miolo) el.classList.remove("zl-in", "zl-out");
+    });
     miolo.classList.toggle("zl-out", saida);
     miolo.classList.toggle("zl-in", !saida);
   }
@@ -94,7 +98,11 @@ export function registrarTema() {
         const modo = modoEfetivo(t.modo, !!(document.body && document.body.classList.contains("dark")));
         if (modo === this._modo) return;
         this._modo = modo;
-        css(estilo.css(modo), "zl-tema-estilo");
+        // A "cauda" do balão é um SVG com a cor antiga do WhatsApp: some.
+        css(
+          estilo.css(modo) + ' #main [data-icon="tail-in"], #main [data-icon="tail-out"] { opacity: 0 !important; }',
+          "zl-tema-estilo"
+        );
       };
       aplicarModo();
       if (t.modo !== "claro" && t.modo !== "escuro" && document.body) {

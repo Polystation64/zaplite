@@ -1,3 +1,4 @@
+import { painelDaConversa } from "../bolhas.js";
 import { addAct, dropAct, ensureDock } from "../dock.js";
 import { reg, settings } from "../nucleo.js";
 import { showPanel } from "../painel.js";
@@ -67,7 +68,7 @@ function ehCaixaDeMensagem(el) {
   if (!el || el.nodeType !== 1) return false;
   try {
     if (el.getAttribute("contenteditable") !== "true") return false;
-    const main = document.querySelector("#main");
+    const main = painelDaConversa();
     if (!main || !main.contains(el)) return false;
     // A busca DENTRO da conversa vive no painel lateral direito, fora do
     // <footer>. A caixa de mensagem é a única contenteditable do rodapé.

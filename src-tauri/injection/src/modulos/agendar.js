@@ -1,3 +1,4 @@
+import { iconeDeEnviar, painelDaConversa } from "../bolhas.js";
 import { addAct, dropAct, ensureDock } from "../dock.js";
 import { chatIdAberto, chatIdDaLinha, linhasDaLista, nomeDaConversaAberta } from "../lista.js";
 import { cliqueReal } from "../midia.js";
@@ -203,7 +204,7 @@ async function avisar(titulo, corpo, id) {
    do rodapé — por isso o `closest("footer")`, e não um seletor solto. */
 function caixaDeMensagem() {
   try {
-    const main = document.querySelector("#main");
+    const main = painelDaConversa();
     if (!main) return null;
     const cx = main.querySelector('footer [contenteditable="true"]');
     return cx && cx.closest("footer") ? cx : null;
@@ -232,10 +233,10 @@ function escreverNaCaixa(cx, texto) {
    áudio. `null` aqui é falha VISÍVEL, nunca um "clica em qualquer coisa". */
 function botaoEnviar() {
   try {
-    const main = document.querySelector("#main");
+    const main = painelDaConversa();
     const rodape = main && main.querySelector("footer");
     if (!rodape) return null;
-    const porIcone = rodape.querySelector('[data-icon="send"], [data-icon="wds-ic-send-filled"]');
+    const porIcone = iconeDeEnviar(rodape);
     if (porIcone) return porIcone.closest("button") || porIcone;
     const cands = rodape.querySelectorAll('button[aria-label], [role="button"][aria-label]');
     for (const b of cands) {

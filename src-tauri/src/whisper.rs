@@ -205,7 +205,7 @@ static GERACAO: AtomicU64 = AtomicU64::new(0);
 fn iniciar(tarefa: &str, alvo: &str, total: u64) {
     CANCELAR.store(false, Ordering::SeqCst);
     GERACAO.fetch_add(1, Ordering::SeqCst);
-    let mut p = prog().lock().unwrap();
+    let mut p = prog().lock().unwrap_or_else(|e| e.into_inner());
     *p = Progresso {
         ativo: true,
         tarefa: tarefa.into(),
@@ -218,16 +218,16 @@ fn iniciar(tarefa: &str, alvo: &str, total: u64) {
     };
 }
 fn fase(f: &str) {
-    prog().lock().unwrap().fase = f.into();
+    prog().lock().unwrap_or_else(|e| e.into_inner()).fase = f.into();
 }
 fn andar(baixado: u64, total: u64) {
-    let mut p = prog().lock().unwrap();
+    let mut p = prog().lock().unwrap_or_else(|e| e.into_inner());
     p.baixado = baixado;
     p.total = total;
     p.fase = "baixando".into();
 }
 fn terminar(r: &Result<String, String>) {
-    let mut p = prog().lock().unwrap();
+    let mut p = prog().lock().unwrap_or_else(|e| e.into_inner());
     p.ativo = false;
     p.fase = "pronto".into();
     match r {
@@ -592,7 +592,7 @@ pub(crate) fn whisper_status(app: AppHandle) -> Value {
 
 #[tauri::command]
 pub(crate) fn whisper_progress() -> Value {
-    let p = prog().lock().unwrap().clone();
+    let p = prog().lock().unwrap_or_else(|e| e.into_inner()).clone();
     let pct = if p.total > 0 {
         (p.baixado as f64 / p.total as f64 * 100.0).min(100.0)
     } else {

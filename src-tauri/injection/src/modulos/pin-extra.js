@@ -1,3 +1,4 @@
+import { marcaDeFixada, painelDaLista } from "../lista.js";
 import { observarTela } from "../tela.js";
 import { addAct, dropAct, ensureDock } from "../dock.js";
 import { chatIdAberto, chatIdDaLinha, linhasDaLista, nomeDaConversaAberta, nomeDaLinha } from "../lista.js";
@@ -88,7 +89,7 @@ function linhaDe(jid) {
 function fixadoNativo(row) {
   if (!row) return false;
   try {
-    return !!row.querySelector('[data-icon*="pin"],[data-testid*="pin"],[aria-label*="ixad"]');
+    return !!marcaDeFixada(row);
   } catch (_) {
     return false;
   }
@@ -110,7 +111,7 @@ function abrirConversa(jid, nome) {
 
 /* --- a faixa ---------------------------------------------------------- */
 function pintarFaixa() {
-  const pane = document.querySelector("#pane-side");
+  const pane = painelDaLista();
   const pai = pane && pane.parentElement;
   let faixa = document.getElementById(ID_FAIXA);
   if (!pai || !fixados.length) {

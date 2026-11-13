@@ -1,0 +1,33 @@
+# Testes do backend Rust. Separado de `testes.yml` DE PROPÓSITO: aquele roda em
+# segundos e bloqueia; este compila o lado Tauri (minutos, mesmo com cache) e por
+# isso só roda nos branches de versão e sob demanda. Uma falha de rede aqui não
+# deixa o CI rápido vermelho.
+name: rust
+
+on:
+  push:
+    branches: ["main", "release/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-test:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      # O bundle é embutido no binário (`include_str!`): tem que existir antes.
+      - run: npm run empacotar
+      - name: cargo test
+        run: cargo test --manifest-path src-tauri/Cargo.toml

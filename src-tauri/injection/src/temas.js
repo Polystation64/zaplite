@@ -168,12 +168,12 @@ function terminal(modo) {
     ? {
         fundo: "#030603", superficie: "#060c07", elevada: "#0a140b", destaque: "rgba(61,255,134,.10)",
         texto: tinta, textoSuave: "#1fa354", acao: "#c5ff6b", papelDeParede: "#030603",
-        caixa: "#050a05", saida: "rgba(61,255,134,.07)", entrada: "transparent",
+        caixa: "#050a05", saida: "rgba(61,255,134,.07)", entrada: "rgba(61,255,134,.04)",
       }
     : {
         fundo: "#c4cfa1", superficie: "#b8c48f", elevada: "#cdd8ab", destaque: "rgba(15,56,15,.12)",
         texto: tinta, textoSuave: "#306230", acao: "#0f380f", papelDeParede: "#c4cfa1",
-        caixa: "#d2dcb2", saida: "rgba(15,56,15,.10)", entrada: "transparent",
+        caixa: "#d2dcb2", saida: "rgba(15,56,15,.10)", entrada: "rgba(15,56,15,.04)",
       };
   const tela = e
     ? `repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 1px, transparent 1px 3px),

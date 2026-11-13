@@ -681,6 +681,13 @@
           custa CPU e alguns segundos; áudios acima deste limite são ignorados pelo automático —
           você ainda pode transcrevê-los à mão pelo botão da bolha. Padrão: 180 s.
         </div>
+        <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-top:12px">
+          <input type="checkbox" id="autoNaoLidas"/> Ao abrir uma conversa, transcrever também os áudios não lidos</label>
+        <div class="hint">
+          Transcreve os áudios recebidos que estão abaixo do marcador “N mensagens não lidas” (no máximo
+          os 5 mais recentes). Sem isto, o automático só pega o áudio que chega com a conversa já aberta.
+          Atenção: obter o som marca o áudio como <b>ouvido</b> para quem enviou.
+        </div>
       </div>
       <div class="field">
         <label class="k">Executável do whisper-cli (opcional)</label>
@@ -1831,6 +1838,7 @@
     document.getElementById("whisperModel").value = S.whisperModel||"";
     document.getElementById("whisperCli").value = S.whisperCli||"";
     document.getElementById("autoMaxSeg").value = (S.transcricao && S.transcricao.autoMaxSeg) || 180;
+    document.getElementById("autoNaoLidas").checked = !(S.transcricao && S.transcricao.autoNaoLidas === false);
     refreshAiStatus();
     // Lista de verdade quando o provedor publica um catálogo. Só quando não há
     // edição pendente — `ai_models` consulta o que está SALVO.
@@ -2294,6 +2302,10 @@
     S.transcricao = S.transcricao || {};
     S.transcricao.autoMaxSeg = (n >= 10 && n <= 1800) ? n : 180;
   });
+  document.getElementById("autoNaoLidas").addEventListener("change",e=>{
+    S.transcricao = S.transcricao || {};
+    S.transcricao.autoNaoLidas = e.target.checked;
+  });
   // Preferências dos módulos de IA sob demanda. Ficam em `ia`, que é uma das
   // CHAVES_PUBLICAS do Rust: o bundle precisa lê-las, e não há segredo num
   // idioma de destino. Os limites são REPETIDOS do lado do bundle (`cfgIa`),
@@ -2471,11 +2483,21 @@
       pronto.style.display = "none";
     }
 
-    // Quem ja tem um whisper-cli funcionando nao ve oferta de instalacao.
+    // O bloco aparece SEMPRE. Antes, quem ja tinha um whisper-cli proprio nao
+    // via oferta nenhuma - e ficava sem caminho para a variante CUDA mesmo com
+    // placa NVIDIA (relato real: motor proprio so de CPU numa RTX 4050).
     const blocoMotor = document.getElementById("wMotorBloco");
-    blocoMotor.style.display = (e.cli && !e.motorInstalado) ? "none" : "";
+    blocoMotor.style.display = "";
     const box = document.getElementById("wMotores");
     box.textContent = "";
+    if(e.cli && !e.motorInstalado){
+      const d = document.createElement("div");
+      d.className = "hint"; d.style.cssText = "margin-top:0;flex-basis:100%";
+      d.textContent = "Você já tem um motor próprio, e ele continua valendo. Se instalar um daqui, o ZapLite passa a usar o instalado"+
+        (e.nvidia ? " — a variante CUDA usa a placa NVIDIA e é muito mais rápida que a CPU." : ".")+
+        " Para voltar ao seu, apague o caminho no campo “whisper-cli” abaixo.";
+      box.appendChild(d);
+    }
     if(e.motorInstalado){
       const d = document.createElement("div");
       d.className = "hint"; d.style.cssText = "margin-top:0;flex-basis:100%";

@@ -1,3 +1,4 @@
+import { detalheDaLinha, linhaComEstrutura, painelDaLista } from "../lista.js";
 import { observarTela } from "../tela.js";
 import {
   autorDaLinha,
@@ -179,8 +180,7 @@ export function registrarNotificacoes() {
       function linhaLegivel(row) {
         try {
           return !!(
-            row.querySelector('[data-testid="cell-frame-title"]') &&
-            row.querySelector('[data-testid="cell-frame-secondary"], [data-testid="cell-frame-container"]')
+            linhaComEstrutura(row)
           );
         } catch (_) {
           return false;
@@ -237,7 +237,7 @@ export function registrarNotificacoes() {
       function relogioDaLinha(row) {
         try {
           const el =
-            row.querySelector('[data-testid="cell-frame-primary-detail"]') ||
+            detalheDaLinha(row) ||
             row.querySelector('[role="gridcell"][aria-colindex="2"] [data-testid*="detail"]');
           if (!el) return "";
           const fontes = [el, el.parentElement].filter(Boolean);
@@ -510,7 +510,7 @@ export function registrarNotificacoes() {
           self._ultimoAlvo = chatId;
           self._ultimoAlvoTs = agora;
         }
-        const pane = document.querySelector("#pane-side");
+        const pane = painelDaLista();
         if (t === 0) self._rolagemOriginal = pane ? pane.scrollTop : null;
 
         const linha = self._linhaDoChat(chatId);

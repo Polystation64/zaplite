@@ -17,6 +17,14 @@ Regras, para o aviso nunca mentir:
 
 <!-- Escreva a versão nova AQUI EM CIMA, logo abaixo desta linha. -->
 
+## 0.1.11
+
+Tema nos balões e transcrição mais rápida.
+
+* Os temas agora pintam os balões de conversa de verdade — antes o balão do WhatsApp aparecia por cima do tema.
+* A transcrição de áudios curtos ficou bem mais rápida (num teste, de 13 para 7 segundos num áudio de 11 segundos), com o mesmo texto.
+* Transcrição automática: ao abrir uma conversa, os áudios não lidos também são transcritos (até os 5 mais recentes). Dá para desligar em IA & TRANSCRIÇÃO.
+
 ## 0.1.10
 
 Correções nas notificações.

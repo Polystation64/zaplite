@@ -1047,6 +1047,19 @@ impl Drop for AudioTemp {
     }
 }
 
+/// Janela do codificador do Whisper (`--audio-ctx`) para um áudio curto.
+/// O Whisper codifica SEMPRE 30 s (1500 quadros), mesmo num áudio de 10 s, e
+/// na CPU o codificador é quase todo o tempo. MEDIDO nesta máquina
+/// (large-v3-turbo, 8 threads, áudio de 11 s): 13,1 s → 7,4 s com a janela
+/// em 640, texto idêntico. 50 quadros por segundo + folga; acima de 28 s o
+/// áudio ocupa a janela inteira e nada muda. PURA e testada.
+pub fn audio_ctx_para(segundos: f64) -> Option<u32> {
+    if !(segundos > 0.0) || segundos >= 28.0 {
+        return None;
+    }
+    Some(((segundos * 50.0).ceil() as u32 + 96).clamp(256, 1500))
+}
+
 async fn transcrever_impl(settings: Value, app: AppHandle, audio_b64: String, prompt: Option<String>) -> Result<String, String> {
     let model = settings["whisperModel"].as_str().unwrap_or("").to_string();
     if model.trim().is_empty() {
@@ -1146,6 +1159,10 @@ async fn transcrever_impl(settings: Value, app: AppHandle, audio_b64: String, pr
         }
     }
 
+    // Duração pelo tamanho do WAV (16 kHz, mono, 16 bits = 32000 bytes/s).
+    let segundos = fs::metadata(&wav).map(|m| m.len().saturating_sub(44) as f64 / 32000.0).unwrap_or(0.0);
+    let audio_ctx = audio_ctx_para(segundos);
+
     let mut cmd_cli = tokio::process::Command::new(&cli);
     #[cfg(windows)]
     cmd_cli.creation_flags(CREATE_NO_WINDOW);
@@ -1153,6 +1170,7 @@ async fn transcrever_impl(settings: Value, app: AppHandle, audio_b64: String, pr
         .kill_on_drop(true)
         .args(["-m", &model, "-l", &lang, "-nt"])
         .args(["-t", &threads.to_string()])
+        .args(audio_ctx.map(|n| vec!["-ac".to_string(), n.to_string()]).unwrap_or_default())
         .args(if prompt_inicial.is_empty() { vec![] } else { vec!["--prompt".to_string(), prompt_inicial.clone()] })
         .arg("-f")
         .arg(&wav)
@@ -1555,6 +1573,21 @@ fn origem_para_log(url: &str) -> String {
         format!("{esquema}://<sem host>")
     } else {
         format!("{esquema}://{host}")
+    }
+}
+
+#[cfg(test)]
+mod testes_audio_ctx {
+    use super::audio_ctx_para;
+    #[test]
+    fn janela_acompanha_a_duracao_do_audio() {
+        assert_eq!(audio_ctx_para(11.0), Some(646)); // o caso medido (~640)
+        assert_eq!(audio_ctx_para(1.0), Some(256)); // piso
+        assert_eq!(audio_ctx_para(27.9), Some(1491));
+        assert_eq!(audio_ctx_para(28.0), None); // janela cheia: não mexe
+        assert_eq!(audio_ctx_para(300.0), None);
+        assert_eq!(audio_ctx_para(0.0), None);
+        assert_eq!(audio_ctx_para(f64::NAN), None);
     }
 }
 
@@ -2658,7 +2691,7 @@ pub struct AtalhosEstado(Mutex<Vec<Value>>);
 
 #[tauri::command]
 fn atalhos_estado(app: AppHandle) -> Vec<Value> {
-    app.state::<AtalhosEstado>().0.lock().unwrap().clone()
+    app.state::<AtalhosEstado>().0.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 fn executar_atalho(app: &AppHandle, acao: &str) {
@@ -2745,7 +2778,7 @@ fn aplicar_atalhos(app: &AppHandle) {
             }
         }
     }
-    *app.state::<AtalhosEstado>().0.lock().unwrap() = relatorio;
+    *app.state::<AtalhosEstado>().0.lock().unwrap_or_else(|e| e.into_inner()) = relatorio;
 }
 
 /// Última linha de defesa: o app nem chegou a existir, então não há AppHandle
@@ -3029,8 +3062,8 @@ fn ganchos_de_teste(handle: &AppHandle) {
             };
             let estado = |h: &AppHandle| -> (usize, usize) {
                 let st = h.state::<notify::ToastState>();
-                let d = st.data.lock().unwrap().len();
-                let s = st.stack.lock().unwrap().len();
+                let d = st.data.lock().unwrap_or_else(|e| e.into_inner()).len();
+                let s = st.stack.lock().unwrap_or_else(|e| e.into_inner()).len();
                 (d, s)
             };
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;

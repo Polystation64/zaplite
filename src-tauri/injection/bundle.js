@@ -25,6 +25,74 @@
   function painelDasBolhas() {
     return document.querySelector('[data-testid="conversation-panel-messages"]') || document.querySelector("#main") || null;
   }
+  function fundoPintado(cor, imagem) {
+    if (imagem && imagem !== "none") return true;
+    const c = String(cor || "").replace(/\s+/g, "").toLowerCase();
+    if (!c || c === "transparent") return false;
+    const m = /^rgba\(\d+,\d+,\d+,([\d.]+)\)$/.exec(c);
+    return m ? Number(m[1]) > 0.02 : true;
+  }
+  var MIOLOS = /* @__PURE__ */ new WeakMap();
+  var NAO_E_BALAO = /* @__PURE__ */ new Set(["IMG", "SVG", "VIDEO", "CANVAS", "BUTTON", "AUDIO", "A", "PATH"]);
+  function mioloPintado(bolha) {
+    if (!bolha) return null;
+    const lembrado = MIOLOS.get(bolha);
+    if (lembrado && lembrado.isConnected && bolha.contains(lembrado)) return lembrado;
+    const inicio = bolha.querySelector(BOLHA_MIOLO) || bolha;
+    let achado = inicio;
+    try {
+      const painel = painelDasBolhas();
+      const larguraMax = painel ? painel.getBoundingClientRect().width * 0.92 : Infinity;
+      const fila2 = [[inicio, 0]];
+      let vistos = 0;
+      while (fila2.length && vistos < 80) {
+        const [el, prof] = fila2.shift();
+        vistos++;
+        if (!NAO_E_BALAO.has(String(el.tagName).toUpperCase())) {
+          const cs = getComputedStyle(el);
+          if (fundoPintado(cs.backgroundColor, cs.backgroundImage)) {
+            const r = el.getBoundingClientRect();
+            if (r.width >= 40 && r.height >= 18 && r.width <= larguraMax) {
+              achado = el;
+              break;
+            }
+          }
+        }
+        if (prof < 7) for (const f of el.children) fila2.push([f, prof + 1]);
+      }
+    } catch (_) {
+    }
+    MIOLOS.set(bolha, achado);
+    return achado;
+  }
+  function ehMarcadorDeNaoLidas(texto) {
+    return /^\s*\d+\s+(?:mensage(?:m|ns)\s+não\s+lidas?|unread\s+messages?|mensajes?\s+no\s+leídos?)\s*$/i.test(String(texto || ""));
+  }
+  function marcadorDeNaoLidas() {
+    const p = painelDasBolhas();
+    if (!p) return null;
+    try {
+      const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+      let n;
+      while (n = w.nextNode()) {
+        if (n.nodeValue.length < 40 && ehMarcadorDeNaoLidas(n.nodeValue)) return n.parentElement;
+      }
+    } catch (_) {
+    }
+    return null;
+  }
+  function painelDaConversa() {
+    return document.querySelector("#main");
+  }
+  function iconeDeEnviar(rodape) {
+    return rodape ? rodape.querySelector('[data-icon="send"], [data-icon="wds-ic-send-filled"]') : null;
+  }
+  function visualizadorDeMidia() {
+    return document.querySelector('[data-testid="media-viewer"]');
+  }
+  function modalAberto() {
+    return document.querySelector("[data-animate-modal-body]");
+  }
   function ehBolha(el) {
     if (!el || el.nodeType !== 1) return false;
     try {
@@ -92,7 +160,7 @@
         if (v.indexOf("tail-in") === 0) return false;
       }
       const p = painelDasBolhas();
-      const miolo = bolha.querySelector(BOLHA_MIOLO) || bolha;
+      const miolo = mioloPintado(bolha) || bolha;
       if (p) {
         const rb = miolo.getBoundingClientRect();
         const rp = p.getBoundingClientRect();
@@ -2577,6 +2645,18 @@
   function chatIdAberto() {
     return chatIdDaLinha(linhaSelecionada());
   }
+  function painelDaLista() {
+    return document.querySelector("#pane-side");
+  }
+  function linhaComEstrutura(row) {
+    return !!(row.querySelector('[data-testid="cell-frame-title"]') && row.querySelector('[data-testid="cell-frame-secondary"], [data-testid="cell-frame-container"]'));
+  }
+  function detalheDaLinha(row) {
+    return row.querySelector('[data-testid="cell-frame-primary-detail"]');
+  }
+  function marcaDeFixada(row) {
+    return row.querySelector('[data-icon*="pin"],[data-testid*="pin"],[aria-label*="ixad"]');
+  }
   function cabecalhoDaConversa() {
     try {
       return document.querySelector("#main header");
@@ -3190,7 +3270,7 @@
       papelDeParede: "#030603",
       caixa: "#050a05",
       saida: "rgba(61,255,134,.07)",
-      entrada: "transparent"
+      entrada: "rgba(61,255,134,.04)"
     } : {
       fundo: "#c4cfa1",
       superficie: "#b8c48f",
@@ -3202,7 +3282,7 @@
       papelDeParede: "#c4cfa1",
       caixa: "#d2dcb2",
       saida: "rgba(15,56,15,.10)",
-      entrada: "transparent"
+      entrada: "rgba(15,56,15,.04)"
     };
     const tela = e ? `repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0 1px, transparent 1px 3px),
        radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.55) 100%)` : `repeating-linear-gradient(0deg, rgba(15,56,15,.06) 0 1px, transparent 1px 3px),
@@ -3574,8 +3654,11 @@
   }
   function marcarBolhas() {
     for (const b of bolhasVisiveis()) {
-      const miolo = b.querySelector(BOLHA_MIOLO) || b;
+      const miolo = mioloPintado(b) || b;
       const saida = ehDeSaida(b);
+      b.querySelectorAll(".zl-in, .zl-out").forEach((el) => {
+        if (el !== miolo) el.classList.remove("zl-in", "zl-out");
+      });
       miolo.classList.toggle("zl-out", saida);
       miolo.classList.toggle("zl-in", !saida);
     }
@@ -3607,7 +3690,10 @@
           const modo = modoEfetivo(t.modo, !!(document.body && document.body.classList.contains("dark")));
           if (modo === this._modo) return;
           this._modo = modo;
-          css(estilo.css(modo), "zl-tema-estilo");
+          css(
+            estilo.css(modo) + ' #main [data-icon="tail-in"], #main [data-icon="tail-out"] { opacity: 0 !important; }',
+            "zl-tema-estilo"
+          );
         };
         aplicarModo();
         if (t.modo !== "claro" && t.modo !== "escuro" && document.body) {
@@ -3764,10 +3850,10 @@
         const varrer = () => {
           bolhasVisiveis().forEach((b) => midiasDe(b).forEach(marcar));
           if (!(settings.nsfw && settings.nsfw.lista === false)) {
-            midiasDe(document.querySelector("#pane-side")).forEach(marcar);
+            midiasDe(painelDaLista()).forEach(marcar);
           }
-          midiasDe(document.querySelector('[data-testid="media-viewer"]')).forEach(marcar);
-          const modal = document.querySelector("[data-animate-modal-body]");
+          midiasDe(visualizadorDeMidia()).forEach(marcar);
+          const modal = modalAberto();
           if (modal) midiasDe(modal).forEach(marcar);
         };
         const pedir2 = throttleComCauda(varrer, NSFW_VARREDURA_MS);
@@ -3796,6 +3882,7 @@
   // src-tauri/injection/src/modulos/auto-transcrever.js
   var AT_VARREDURA_MS = 2500;
   var AT_MAX_SEG_PADRAO = 180;
+  var AT_NAO_LIDOS_MAX = 5;
   function registrarAutoTranscrever() {
     reg({
       id: "autoTranscribe",
@@ -3812,8 +3899,7 @@
           return v > 0 ? v : AT_MAX_SEG_PADRAO;
         };
         const chaveDaConversa = () => {
-          const t = document.querySelector("#main header span[title]");
-          return t && (t.getAttribute("title") || t.textContent) || "";
+          return nomeDaConversaAberta();
         };
         const marcarFeito = (b) => {
           const id = idDaBolha(b);
@@ -3834,7 +3920,20 @@
           const audios = bolhasVisiveis().filter((b) => ehBolhaDeAudio(b) && !ehDeSaida(b));
           if (chave !== self._conversa) {
             self._conversa = chave;
-            audios.forEach(marcarFeito);
+            const querNaoLidos = !(settings.transcricao && settings.transcricao.autoNaoLidas === false);
+            const marca = querNaoLidos ? marcadorDeNaoLidas() : null;
+            const novos = marca ? audios.filter((b) => marca.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) : [];
+            const escolhidos = novos.slice(-AT_NAO_LIDOS_MAX).filter((b) => {
+              const seg = segundosDaBolha(b);
+              return !(seg && seg > limite());
+            });
+            audios.forEach((b) => {
+              if (escolhidos.indexOf(b) < 0) marcarFeito(b);
+            });
+            escolhidos.forEach((b) => {
+              if (!jaFeito(b)) self._fila.push(b);
+            });
+            bombear();
             return;
           }
           audios.forEach((b) => {
@@ -3875,7 +3974,7 @@
             if (ehFaltaDeInstalacao(e)) {
               self._desligado = true;
               self._fila.length = 0;
-              clearInterval(self._timer);
+              if (self._timer) self._timer();
               self._timer = null;
               avisarInstalacaoDaTranscricao(e);
             } else if (!(e && e.zlLongoDemais)) {
@@ -3886,11 +3985,10 @@
           }
           if (!self._desligado) setTimeout(bombear, 250);
         };
-        self._timer = setInterval(varrer, AT_VARREDURA_MS);
-        varrer();
+        self._timer = observarTela(varrer, true, AT_VARREDURA_MS);
       },
       revert() {
-        clearInterval(this._timer);
+        if (this._timer) this._timer();
         this._timer = null;
         this._desligado = true;
         if (this._fila) this._fila.length = 0;
@@ -4006,7 +4104,7 @@
         }
         function linhaLegivel(row) {
           try {
-            return !!(row.querySelector('[data-testid="cell-frame-title"]') && row.querySelector('[data-testid="cell-frame-secondary"], [data-testid="cell-frame-container"]'));
+            return !!linhaComEstrutura(row);
           } catch (_) {
             return false;
           }
@@ -4035,7 +4133,7 @@
         }
         function relogioDaLinha(row) {
           try {
-            const el = row.querySelector('[data-testid="cell-frame-primary-detail"]') || row.querySelector('[role="gridcell"][aria-colindex="2"] [data-testid*="detail"]');
+            const el = detalheDaLinha(row) || row.querySelector('[role="gridcell"][aria-colindex="2"] [data-testid*="detail"]');
             if (!el) return "";
             const fontes = [el, el.parentElement].filter(Boolean);
             for (const f of fontes) {
@@ -4175,7 +4273,7 @@
             self._ultimoAlvo = chatId;
             self._ultimoAlvoTs = agora;
           }
-          const pane = document.querySelector("#pane-side");
+          const pane = painelDaLista();
           if (t === 0) self._rolagemOriginal = pane ? pane.scrollTop : null;
           const linha = self._linhaDoChat(chatId);
           if (linha) {
@@ -5392,7 +5490,7 @@
     if (!el || el.nodeType !== 1) return false;
     try {
       if (el.getAttribute("contenteditable") !== "true") return false;
-      const main = document.querySelector("#main");
+      const main = painelDaConversa();
       if (!main || !main.contains(el)) return false;
       return !!el.closest("footer");
     } catch (_) {
@@ -6229,7 +6327,7 @@
   function fixadoNativo(row) {
     if (!row) return false;
     try {
-      return !!row.querySelector('[data-icon*="pin"],[data-testid*="pin"],[aria-label*="ixad"]');
+      return !!marcaDeFixada(row);
     } catch (_) {
       return false;
     }
@@ -6245,7 +6343,7 @@
     cliqueReal(row);
   }
   function pintarFaixa() {
-    const pane = document.querySelector("#pane-side");
+    const pane = painelDaLista();
     const pai = pane && pane.parentElement;
     let faixa = document.getElementById(ID_FAIXA);
     if (!pai || !fixados.length) {
@@ -6873,7 +6971,7 @@
   }
   function caixaDeMensagem() {
     try {
-      const main = document.querySelector("#main");
+      const main = painelDaConversa();
       if (!main) return null;
       const cx = main.querySelector('footer [contenteditable="true"]');
       return cx && cx.closest("footer") ? cx : null;
@@ -6893,10 +6991,10 @@
   }
   function botaoEnviar() {
     try {
-      const main = document.querySelector("#main");
+      const main = painelDaConversa();
       const rodape = main && main.querySelector("footer");
       if (!rodape) return null;
-      const porIcone = rodape.querySelector('[data-icon="send"], [data-icon="wds-ic-send-filled"]');
+      const porIcone = iconeDeEnviar(rodape);
       if (porIcone) return porIcone.closest("button") || porIcone;
       const cands = rodape.querySelectorAll('button[aria-label], [role="button"][aria-label]');
       for (const b of cands) {

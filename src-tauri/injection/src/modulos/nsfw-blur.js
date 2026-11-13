@@ -1,3 +1,5 @@
+import { modalAberto, visualizadorDeMidia } from "../bolhas.js";
+import { painelDaLista } from "../lista.js";
 import { observarTela } from "../tela.js";
 import { bolhasVisiveis } from "../bolhas.js";
 import { reg, settings, throttleComCauda } from "../nucleo.js";
@@ -47,11 +49,11 @@ export function registrarNsfwBlur() {
         bolhasVisiveis().forEach((b) => midiasDe(b).forEach(marcar));
         // 2) prévia na lista de conversas (desligável em settings.nsfw.lista)
         if (!(settings.nsfw && settings.nsfw.lista === false)) {
-          midiasDe(document.querySelector("#pane-side")).forEach(marcar);
+          midiasDe(painelDaLista()).forEach(marcar);
         }
         // 3) visualizador em tela cheia — abrir a foto não pode desfazer o modo
-        midiasDe(document.querySelector('[data-testid="media-viewer"]')).forEach(marcar);
-        const modal = document.querySelector("[data-animate-modal-body]");
+        midiasDe(visualizadorDeMidia()).forEach(marcar);
+        const modal = modalAberto();
         if (modal) midiasDe(modal).forEach(marcar);
       };
       const pedir = throttleComCauda(varrer, NSFW_VARREDURA_MS);

@@ -54,6 +54,94 @@ function painelDasBolhas() {
     null
   );
 }
+/** Um fundo computado PINTA alguma coisa? PURA e testada. */
+export function fundoPintado(cor, imagem) {
+  if (imagem && imagem !== "none") return true;
+  const c = String(cor || "").replace(/\s+/g, "").toLowerCase();
+  if (!c || c === "transparent") return false;
+  const m = /^rgba\(\d+,\d+,\d+,([\d.]+)\)$/.exec(c);
+  return m ? Number(m[1]) > 0.02 : true;
+}
+
+/* O elemento que DESENHA o balão — achado pelo que ele é (o primeiro, de fora
+   para dentro, com fundo pintado e tamanho de balão), não pelo nome. O tema
+   pintava `[data-testid="msg-container"]`; quando esse nó não existe ou não é
+   o que carrega a cor, a tinta ia para a linha inteira e o balão do WhatsApp
+   (inclusive a cor do tema de conversa nativo) aparecia por cima — relato
+   real, com print. Memorizado por bolha: o custo é só na primeira vez. */
+const MIOLOS = new WeakMap();
+const NAO_E_BALAO = new Set(["IMG", "SVG", "VIDEO", "CANVAS", "BUTTON", "AUDIO", "A", "PATH"]);
+export function mioloPintado(bolha) {
+  if (!bolha) return null;
+  const lembrado = MIOLOS.get(bolha);
+  if (lembrado && lembrado.isConnected && bolha.contains(lembrado)) return lembrado;
+  const inicio = bolha.querySelector(BOLHA_MIOLO) || bolha;
+  let achado = inicio;
+  try {
+    const painel = painelDasBolhas();
+    const larguraMax = painel ? painel.getBoundingClientRect().width * 0.92 : Infinity;
+    const fila = [[inicio, 0]];
+    let vistos = 0;
+    while (fila.length && vistos < 80) {
+      const [el, prof] = fila.shift();
+      vistos++;
+      if (!NAO_E_BALAO.has(String(el.tagName).toUpperCase())) {
+        const cs = getComputedStyle(el);
+        if (fundoPintado(cs.backgroundColor, cs.backgroundImage)) {
+          const r = el.getBoundingClientRect();
+          if (r.width >= 40 && r.height >= 18 && r.width <= larguraMax) {
+            achado = el;
+            break;
+          }
+        }
+      }
+      if (prof < 7) for (const f of el.children) fila.push([f, prof + 1]);
+    }
+  } catch (_) {}
+  MIOLOS.set(bolha, achado);
+  return achado;
+}
+
+/** Texto do marcador que o WhatsApp põe antes das mensagens novas ao abrir
+ * a conversa: "12 mensagens não lidas". PURA e testada. */
+export function ehMarcadorDeNaoLidas(texto) {
+  return /^\s*\d+\s+(?:mensage(?:m|ns)\s+não\s+lidas?|unread\s+messages?|mensajes?\s+no\s+leídos?)\s*$/i.test(String(texto || ""));
+}
+
+/** O nó do marcador "N mensagens não lidas" na conversa aberta, ou null. */
+export function marcadorDeNaoLidas() {
+  const p = painelDasBolhas();
+  if (!p) return null;
+  try {
+    const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = w.nextNode())) {
+      if (n.nodeValue.length < 40 && ehMarcadorDeNaoLidas(n.nodeValue)) return n.parentElement;
+    }
+  } catch (_) {}
+  return null;
+}
+
+/** O painel da conversa aberta (cabeçalho, mensagens e rodapé). */
+export function painelDaConversa() {
+  return document.querySelector("#main");
+}
+
+/** O ícone do botão de enviar dentro do rodapé da conversa, ou null. */
+export function iconeDeEnviar(rodape) {
+  return rodape ? rodape.querySelector('[data-icon="send"], [data-icon="wds-ic-send-filled"]') : null;
+}
+
+/** O visualizador de mídia em tela cheia, quando aberto. */
+export function visualizadorDeMidia() {
+  return document.querySelector('[data-testid="media-viewer"]');
+}
+
+/** O corpo do modal aberto por cima da conversa, quando há um. */
+export function modalAberto() {
+  return document.querySelector("[data-animate-modal-body]");
+}
+
 /** É mesmo uma bolha, e não um pedaço de uma? */
 function ehBolha(el) {
   if (!el || el.nodeType !== 1) return false;
@@ -135,7 +223,7 @@ export function ehDeSaida(bolha) {
     }
     // Geometria: de que lado do painel a bolha está desenhada.
     const p = painelDasBolhas();
-    const miolo = bolha.querySelector(BOLHA_MIOLO) || bolha;
+    const miolo = mioloPintado(bolha) || bolha;
     if (p) {
       const rb = miolo.getBoundingClientRect();
       const rp = p.getBoundingClientRect();

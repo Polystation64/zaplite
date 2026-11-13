@@ -205,6 +205,30 @@ export function chatIdAberto() {
 /** O nome da conversa aberta, para EXIBIR (nunca para identificar). Vem do
     cabeçalho do painel de mensagens; cai na linha selecionada se o cabeçalho
     mudar de forma. */
+/** O painel da lista de conversas. */
+export function painelDaLista() {
+  return document.querySelector("#pane-side");
+}
+
+/** A linha tem a estrutura esperada (título + corpo)? Usado para saber se a
+ * leitura de "silenciada" é confiável ou se a linha ainda está montando. */
+export function linhaComEstrutura(row) {
+  return !!(
+    row.querySelector('[data-testid="cell-frame-title"]') &&
+    row.querySelector('[data-testid="cell-frame-secondary"], [data-testid="cell-frame-container"]')
+  );
+}
+
+/** O bloco de data/hora da linha, ou null. */
+export function detalheDaLinha(row) {
+  return row.querySelector('[data-testid="cell-frame-primary-detail"]');
+}
+
+/** A marca de "fixada" que o próprio WhatsApp desenha na linha, ou null. */
+export function marcaDeFixada(row) {
+  return row.querySelector('[data-icon*="pin"],[data-testid*="pin"],[aria-label*="ixad"]');
+}
+
 /** O cabeçalho da conversa aberta (nome, foto e botões do WhatsApp). */
 export function cabecalhoDaConversa() {
   try {

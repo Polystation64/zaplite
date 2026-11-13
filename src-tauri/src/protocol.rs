@@ -231,7 +231,7 @@ pub struct DeepLinkState {
 /// o SEGUNDO link, não o primeiro.
 pub fn guardar(app: &AppHandle, alvo: Alvo) {
     let st = app.state::<DeepLinkState>();
-    *st.pendente.lock().unwrap() = Some((alvo, Instant::now()));
+    *st.pendente.lock().unwrap_or_else(|e| e.into_inner()) = Some((alvo, Instant::now()));
 }
 
 /// Uma URL chegou pela linha de comando com o app JÁ VIVO (segunda invocação).
@@ -268,7 +268,7 @@ pub fn rotear(app: &AppHandle, url: &str) {
 #[tauri::command]
 pub fn take_pending_deeplink(app: AppHandle) -> Option<Alvo> {
     let st = app.state::<DeepLinkState>();
-    let mut p = st.pendente.lock().unwrap();
+    let mut p = st.pendente.lock().unwrap_or_else(|e| e.into_inner());
     match p.take() {
         Some((alvo, quando)) if quando.elapsed() <= PENDENTE_TTL => Some(alvo),
         _ => None,

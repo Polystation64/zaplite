@@ -239,6 +239,55 @@ teste("horário da mensagem sai do data-pre-plain-text", () => {
   assert.strictEqual(f("13:38", "ontem"), null);
 });
 
+/* O balão é achado pelo fundo pintado, não pelo nome do elemento. */
+teste("fundo pintado: cor opaca ou imagem contam; transparente não", () => {
+  const f = new Function(extrair("fundoPintado") + "; return fundoPintado;")();
+  assert.ok(f("rgb(32, 44, 51)", "none"));
+  assert.ok(f("rgba(61, 255, 134, 0.04)", "none"));
+  assert.ok(f("rgba(0, 0, 0, 0)", "linear-gradient(red, blue)"));
+  assert.ok(!f("rgba(0, 0, 0, 0)", "none"));
+  assert.ok(!f("transparent", "none"));
+  assert.ok(!f("", ""));
+});
+
+/* Transcrição automática dos áudios não lidos: o marcador do WhatsApp. */
+teste("marcador de mensagens não lidas é reconhecido", () => {
+  const f = new Function(extrair("ehMarcadorDeNaoLidas") + "; return ehMarcadorDeNaoLidas;")();
+  for (const t of ["12 mensagens não lidas", "1 mensagem não lida", " 3 unread messages ", "2 mensajes no leídos"]) assert.ok(f(t), t);
+  for (const t of ["mensagens não lidas", "tenho 12 mensagens não lidas aqui", "Hoje", ""]) assert.ok(!f(t), t);
+});
+
+/* Regra da casa (CONTRIBUTING, item 4): seletor do WhatsApp mora em bolhas.js
+   e lista.js. Já houve o mesmo seletor copiado em 8 arquivos. */
+teste("nenhum módulo carrega seletor estrutural do WhatsApp", () => {
+  const dir = path.join(__dirname, "src", "modulos");
+  const proibido = /querySelector(?:All)?\(\s*["'`](?:#main|#pane-side|\[data-testid|\[data-icon|\[data-animate)/;
+  for (const arq of fs.readdirSync(dir)) {
+    const linhas = fs.readFileSync(path.join(dir, arq), "utf8").split("\n");
+    linhas.forEach((l, i) => assert.ok(!proibido.test(l), `${arq}:${i + 1} tem seletor do WhatsApp: ${l.trim().slice(0, 80)}`));
+  }
+});
+
+/* Um tema mora em QUATRO arquivos (CSS da página, CSS do aviso, prévia do
+   Painel e a lista do Rust). Tema novo em um e ausente em outro = aviso sem
+   tema ou cartão sem efeito. A lista tem que ser a mesma nos quatro. */
+teste("os temas são os mesmos na página, no aviso, no Painel e no Rust", () => {
+  const raiz = path.join(__dirname, "..", "..");
+  const ler = (...p) => fs.readFileSync(path.join(raiz, ...p), "utf8");
+  const ids = (txt, re) => [...new Set([...txt.matchAll(re)].map((m) => m[1]))].sort();
+  const pagina = ids(ler("src-tauri", "injection", "src", "temas.js"), /^\s+(\w+): \{ nome: "/gm);
+  const aviso = ids(ler("src", "toast.html"), /body\.tema-(\w+)/g);
+  const painel = ids(ler("src", "index.html"), /\{id:"(\w+)", nome:"[^"]+", desc:/g);
+  const rust = ids(
+    (ler("src-tauri", "src", "notify.rs").match(/const TEMAS_DE_TOAST[^;]+;/) || [""])[0],
+    /"(\w+)"/g
+  );
+  assert.ok(pagina.length >= 9, "esperava ao menos 9 temas, achei " + pagina.length);
+  assert.deepStrictEqual(aviso, pagina, "toast.html");
+  assert.deepStrictEqual(painel, pagina, "index.html (TEMAS_PAINEL)");
+  assert.deepStrictEqual(rust, pagina, "notify.rs (TEMAS_DE_TOAST)");
+});
+
 /* Cada tema tem claro e escuro; o automático segue o modo do WhatsApp. */
 teste("modo do tema: escolha do usuário vence, automático segue o WhatsApp", () => {
   const f = new Function(extrair("modoEfetivo") + "; return modoEfetivo;")();

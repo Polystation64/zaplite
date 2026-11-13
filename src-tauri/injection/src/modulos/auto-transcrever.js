@@ -1,4 +1,6 @@
-import { BOLHA_MIOLO, bolhasVisiveis, ehDeSaida, idDaBolha } from "../bolhas.js";
+import { nomeDaConversaAberta } from "../lista.js";
+import { observarTela } from "../tela.js";
+import { BOLHA_MIOLO, bolhasVisiveis, ehDeSaida, idDaBolha, marcadorDeNaoLidas } from "../bolhas.js";
 import { ehBolhaDeAudio, mostrarTranscricaoNaBolha, segundosDaBolha, transcreverBolha } from "../midia.js";
 import { reg, settings } from "../nucleo.js";
 import { avisarInstalacaoDaTranscricao, ehFaltaDeInstalacao } from "../painel.js";
@@ -21,6 +23,10 @@ import { avisarInstalacaoDaTranscricao, ehFaltaDeInstalacao } from "../painel.js
      Só vale para o que chegar com a conversa aberta. */
 const AT_VARREDURA_MS = 2500;
 const AT_MAX_SEG_PADRAO = 180;
+// Ao abrir uma conversa, quantos áudios NÃO LIDOS (abaixo do marcador
+// "N mensagens não lidas") entram na fila. Teto de propósito: cada um manda
+// o recibo de "ouvida" e ocupa a CPU; os mais recentes primeiro.
+const AT_NAO_LIDOS_MAX = 5;
 export function registrarAutoTranscrever() {
   reg({
     id: "autoTranscribe",
@@ -38,8 +44,7 @@ export function registrarAutoTranscrever() {
         return v > 0 ? v : AT_MAX_SEG_PADRAO;
       };
       const chaveDaConversa = () => {
-        const t = document.querySelector("#main header span[title]");
-        return (t && (t.getAttribute("title") || t.textContent)) || "";
+        return nomeDaConversaAberta();
       };
       const marcarFeito = (b) => {
         const id = idDaBolha(b);
@@ -59,7 +64,21 @@ export function registrarAutoTranscrever() {
         if (chave !== self._conversa) {
           // Primeira vez nesta conversa: tudo que já está na tela é histórico.
           self._conversa = chave;
-          audios.forEach(marcarFeito);
+          // Histórico continua intocado. A exceção são os áudios que chegaram
+          // desde a última leitura — abrir a conversa É ir ouvi-los, e era
+          // esse caso (o mais comum) que não parecia "automático".
+          const querNaoLidos = !(settings.transcricao && settings.transcricao.autoNaoLidas === false);
+          const marca = querNaoLidos ? marcadorDeNaoLidas() : null;
+          const novos = marca
+            ? audios.filter((b) => marca.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+            : [];
+          const escolhidos = novos.slice(-AT_NAO_LIDOS_MAX).filter((b) => {
+            const seg = segundosDaBolha(b);
+            return !(seg && seg > limite());
+          });
+          audios.forEach((b) => { if (escolhidos.indexOf(b) < 0) marcarFeito(b); });
+          escolhidos.forEach((b) => { if (!jaFeito(b)) self._fila.push(b); });
+          bombear();
           return;
         }
         audios.forEach((b) => {
@@ -106,7 +125,7 @@ export function registrarAutoTranscrever() {
             // módulo — senão ele ficaria morto até reiniciar o app.
             self._desligado = true;
             self._fila.length = 0;
-            clearInterval(self._timer);
+            if (self._timer) self._timer();
             self._timer = null;
             avisarInstalacaoDaTranscricao(e);
           } else if (!(e && e.zlLongoDemais)) {
@@ -118,11 +137,13 @@ export function registrarAutoTranscrever() {
         if (!self._desligado) setTimeout(bombear, 250);
       };
 
-      self._timer = setInterval(varrer, AT_VARREDURA_MS);
-      varrer();
+      // Observador compartilhado em vez de um relógio próprio: só varre quando
+      // a tela muda. `background`: áudio que chega com a janela minimizada
+      // também entra na fila. `_timer` guarda a função de parar.
+      self._timer = observarTela(varrer, true, AT_VARREDURA_MS);
     },
     revert() {
-      clearInterval(this._timer);
+      if (this._timer) this._timer();
       this._timer = null;
       this._desligado = true;
       if (this._fila) this._fila.length = 0;
